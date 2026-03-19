@@ -7,9 +7,10 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
     Optimization for one-hot gadget drive parameters with distance-dependent coupling.
 
     The effective coupling is:
-        g_ij ≈ -d_i * d_j / (1 + r_ij)
+        g_ij ≈ -d_i * d_j * r_ij / (r_ij + 1)
 
-    where d_i are drive amplitudes and r_ij are distance parameters (r_ij >= 0).
+    where d_i are drive amplitudes and r_ij > 0 are distance parameters.
+    Note: r_ij / (r_ij + 1) in (0, 1) for r_ij > 0, approaching 1 as r_ij -> inf.
 
     Parameters
     ----------
@@ -25,21 +26,24 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
         Gradient tolerance for L-BFGS-B optimizer.
     r_max : float or None
         Global upper bound on all r_ij values. None means no upper bound.
+    r_min : float
+        Global lower bound on all r_ij values. Must be > 0. Default 1e-6.
     """
 
     def __init__(self, nqubit, n_restarts=2000, scale=2.0, ftol=1e-15, gtol=1e-10,
-                 r_max=None):
+                 r_max=None, r_min=1e-6):
         self.n = nqubit
         self.n_restarts = n_restarts
         self.scale = scale
         self.ftol = ftol
         self.gtol = gtol
         self.r_max = r_max
+        self.r_min = r_min
         self.mask = np.triu(np.ones((nqubit, nqubit)), k=1)
 
         self.pairs = [(i, j) for i in range(nqubit) for j in range(i+1, nqubit)]
         self.n_pairs = len(self.pairs)
-        self.r_bound_list = [(0, r_max)] * self.n_pairs
+        self.r_bound_list = [(r_min, r_max)] * self.n_pairs
 
     # ------------------------------------------------------------------
     # Unpack / reshape
@@ -68,9 +72,10 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
     # ------------------------------------------------------------------
 
     def reconstructed(self, params):
-        """Compute -d_i * d_j / (1 + r_ij) matrix (off-diagonal only)."""
+        """Compute -d_i * d_j * (r_ij + 2) / (r_ij + 1) matrix (off-diagonal only)."""
         d, r = self._unpack(params)
-        mat = -np.outer(d, d) / (1 + r)
+        factor = (r + 2) / (r + 1)                   # (r+2)/(r+1), always well-defined
+        mat = -np.outer(d, d) * factor
         np.fill_diagonal(mat, 0)
         return mat
 
@@ -84,20 +89,24 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
 
     def gradient(self, params, g_matrix):
         d, r = self._unpack(params)
-        denom = 1 + r
-        mat = -np.outer(d, d) / denom
+        factor = (r + 2) / (r + 1)
+        mat = -np.outer(d, d) * factor
         np.fill_diagonal(mat, 0)
 
         diff = (mat - g_matrix) * self.mask
         diff_sym = diff + diff.T
 
+        # gradient w.r.t. d_k:
+        # d/d(d_k) [-d_i d_j r_ij/(r_ij+1)] = -d_j * r_kj/(r_kj+1) for i=k
         grad_d = np.array([
-            np.sum(diff_sym[k] * (-d / denom[k]))
+            np.sum(diff_sym[k] * (-d * factor[k]))
             for k in range(self.n)
         ])
 
+        # gradient w.r.t. r_ij:
+        # d/d(r_ij) [-d_i d_j r_ij/(r_ij+1)] = -d_i d_j / (r_ij+1)^2
         grad_r = np.array([
-            diff_sym[i, j] * d[i] * d[j] / denom[i, j] ** 2
+            diff_sym[i, j] * (-d[i] * d[j]) / (r[i, j] + 1) ** 2
             for i, j in self.pairs
         ])
 
@@ -109,13 +118,13 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
 
     def _warm_start(self):
         d0 = np.random.randn(self.n) * self.scale
-        hi = self.r_max if self.r_max is not None else self.scale
-        r0 = np.random.uniform(0, hi, self.n_pairs)
+        hi = self.r_max if self.r_max is not None else self.r_min + self.scale
+        r0 = np.random.uniform(self.r_min, max(hi, self.r_min + 1e-3), self.n_pairs)
         return np.concatenate([d0, r0])
 
     def optimize(self, g_matrix):
         """
-        Find d and r_ij minimizing sum_{i<j} (-d_i*d_j/(1+r_ij) - g_ij)^2.
+        Find d and r_ij minimizing sum_{i<j} (-d_i*d_j*r_ij/(r_ij+1) - g_ij)^2.
 
         Parameters
         ----------
@@ -156,7 +165,7 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
 
         print("Target G:")
         print(g_matrix.round(4))
-        print("\nReconstructed -d_i*d_j/(1+r_ij):")
+        print("\nReconstructed -d_i*d_j*(r_ij+2)/(r_ij+1):")
         print(approx.round(4))
         print("\nOptimal drives d:")
         print(d.round(6))
@@ -176,6 +185,7 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
         flux = g_matrix[0, 1] * g_matrix[0, 2] * g_matrix[1, 2]
         print(f"Flux g_01*g_02*g_12 = {flux:.4f} "
               f"({'pi-flux' if flux < 0 else 'zero-flux'})")
+
 
 
 class EffectiveInteractionOptimizer:
