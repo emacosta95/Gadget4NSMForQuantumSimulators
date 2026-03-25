@@ -115,9 +115,8 @@ def build_total_hamiltonian(n_qubits, d_opt, gamma, ntot,
                     [('qz', i, 'qz', j)],
                     coupling=[coupling_dict[key] * gamma],
                     size=n_qubits, verbose=0).qutip_op
-
     # effective longitudinal field
-    effective_longitudinal_field = links * (d_opt[0]**2) * (1/gamma)
+    effective_longitudinal_field = links  * (1/gamma)
 
     # linear Z terms
     hamiltonian_z = 0.
@@ -252,3 +251,18 @@ def build_effective_hamiltonian(total_hamiltonian, basis, gamma,
  
     return (new_hamiltonian, hamiltonian_aa, hamiltonian_delta,
             idxs_single_spin, idxs_nn)
+
+
+
+def compute_particle_number(psi_scipy:np.ndarray,basis:np.ndarray):
+    """Compute <N> for the hamming distance selection
+
+    Args:
+        psi_scipy (np.ndarray): the quantum state in np.ndarray format
+        basis (np.ndarray): basis of the hilbert space in np.ndarray format
+
+    Returns:
+       n_value: <N> with respect to the state
+    """
+    n_value=np.einsum('i,ia->',psi_scipy.conj()*psi_scipy,basis)
+    return n_value
