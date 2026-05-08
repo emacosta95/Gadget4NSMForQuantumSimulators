@@ -201,7 +201,7 @@ for qi in range(n_qubits):
     )
 
 init_ket = qt.tensor(qt.basis(2, 0), qt.basis(2, 1), qt.basis(2, 1))
-sim = QutipEmulator.from_sequence(seq, sampling_rate=0.005)
+sim = QutipEmulator.from_sequence(seq, sampling_rate=0.01)
 sim.set_initial_state(init_ket)
 result = sim.run(progress_bar=False)
 psi_raw = result.get_final_state().full().flatten()
