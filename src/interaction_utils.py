@@ -30,8 +30,16 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
         Global lower bound on all r_ij values. Must be > 0. Default 1e-6.
     """
 
-    def __init__(self, nqubit, n_restarts=2000, scale=2.0, ftol=1e-15, gtol=1e-10,
-                 r_max=None, r_min=1e-6):
+    def __init__(
+        self,
+        nqubit,
+        n_restarts=2000,
+        scale=2.0,
+        ftol=1e-15,
+        gtol=1e-10,
+        r_max=None,
+        r_min=1e-6,
+    ):
         self.n = nqubit
         self.n_restarts = n_restarts
         self.scale = scale
@@ -41,7 +49,7 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
         self.r_min = r_min
         self.mask = np.triu(np.ones((nqubit, nqubit)), k=1)
 
-        self.pairs = [(i, j) for i in range(nqubit) for j in range(i+1, nqubit)]
+        self.pairs = [(i, j) for i in range(nqubit) for j in range(i + 1, nqubit)]
         self.n_pairs = len(self.pairs)
         self.r_bound_list = [(r_min, r_max)] * self.n_pairs
 
@@ -50,8 +58,8 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
     # ------------------------------------------------------------------
 
     def _unpack(self, params):
-        d = params[:self.n]
-        r_vec = params[self.n:]
+        d = params[: self.n]
+        r_vec = params[self.n :]
         r = np.zeros((self.n, self.n))
         for k, (i, j) in enumerate(self.pairs):
             r[i, j] = r_vec[k]
@@ -60,7 +68,7 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
 
     def get_d(self, params):
         """Return drive amplitudes d of shape (n,)."""
-        return params[:self.n].copy()
+        return params[: self.n].copy()
 
     def get_r_matrix(self, params):
         """Return symmetric distance matrix r of shape (n, n), zero diagonal."""
@@ -74,7 +82,7 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
     def reconstructed(self, params):
         """Compute -d_i * d_j * (r_ij + 2) / (r_ij + 1) matrix (off-diagonal only)."""
         d, r = self._unpack(params)
-        factor = (r + 2) / (r + 1)                   # (r+2)/(r+1), always well-defined
+        factor = (r + 2) / (r + 1)  # (r+2)/(r+1), always well-defined
         mat = -np.outer(d, d) * factor
         np.fill_diagonal(mat, 0)
         return mat
@@ -98,17 +106,18 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
 
         # gradient w.r.t. d_k:
         # d/d(d_k) [-d_i d_j r_ij/(r_ij+1)] = -d_j * r_kj/(r_kj+1) for i=k
-        grad_d = np.array([
-            np.sum(diff_sym[k] * (-d * factor[k]))
-            for k in range(self.n)
-        ])
+        grad_d = np.array(
+            [np.sum(diff_sym[k] * (-d * factor[k])) for k in range(self.n)]
+        )
 
         # gradient w.r.t. r_ij:
         # d/d(r_ij) [-d_i d_j r_ij/(r_ij+1)] = -d_i d_j / (r_ij+1)^2
-        grad_r = np.array([
-            diff_sym[i, j] * (-d[i] * d[j]) / (r[i, j] + 1) ** 2
-            for i, j in self.pairs
-        ])
+        grad_r = np.array(
+            [
+                diff_sym[i, j] * (-d[i] * d[j]) / (r[i, j] + 1) ** 2
+                for i, j in self.pairs
+            ]
+        )
 
         return np.concatenate([grad_d, grad_r])
 
@@ -140,9 +149,9 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
         opt_kwargs = dict(
             jac=self.gradient,
             args=(g_matrix,),
-            method='L-BFGS-B',
+            method="L-BFGS-B",
             bounds=bounds,
-            options={'ftol': self.ftol, 'gtol': self.gtol, 'maxiter': 10000}
+            options={"ftol": self.ftol, "gtol": self.gtol, "maxiter": 10000},
         )
 
         best = None
@@ -176,16 +185,19 @@ class EffectiveInteractionOptimizerTunableSelfEnergy:
             for j in range(i + 1, self.n):
                 t = g_matrix[i, j]
                 a = approx[i, j]
-                print(f"  g_{i}{j}: target={t:+.4f}  approx={a:+.4f}  "
-                      f"error={abs(a - t):.2e}")
+                print(
+                    f"  g_{i}{j}: target={t:+.4f}  approx={a:+.4f}  "
+                    f"error={abs(a - t):.2e}"
+                )
 
         eigvals = np.linalg.eigvalsh(g_matrix)
         print(f"\nEigenvalues of G: {eigvals.round(4)}")
         print(f"Rank of G: {np.linalg.matrix_rank(g_matrix, tol=1e-10)}")
         flux = g_matrix[0, 1] * g_matrix[0, 2] * g_matrix[1, 2]
-        print(f"Flux g_01*g_02*g_12 = {flux:.4f} "
-              f"({'pi-flux' if flux < 0 else 'zero-flux'})")
-
+        print(
+            f"Flux g_01*g_02*g_12 = {flux:.4f} "
+            f"({'pi-flux' if flux < 0 else 'zero-flux'})"
+        )
 
 
 class EffectiveInteractionOptimizer:
@@ -236,8 +248,8 @@ class EffectiveInteractionOptimizer:
         opt_kwargs = dict(
             jac=self.gradient,
             args=(g_matrix,),
-            method='L-BFGS-B',
-            options={'ftol': self.ftol, 'gtol': self.gtol, 'maxiter': 10000}
+            method="L-BFGS-B",
+            options={"ftol": self.ftol, "gtol": self.gtol, "maxiter": 10000},
         )
 
         best = minimize(self.objective, d0, **opt_kwargs)
@@ -263,12 +275,225 @@ class EffectiveInteractionOptimizer:
             for j in range(i + 1, self.n):
                 t = g_matrix[i, j]
                 a = approx[i, j]
-                print(f"  g_{i}{j}: target={t:+.4f}  approx={a:+.4f}  "
-                      f"error={abs(a - t):.2e}")
+                print(
+                    f"  g_{i}{j}: target={t:+.4f}  approx={a:+.4f}  "
+                    f"error={abs(a - t):.2e}"
+                )
 
         eigvals = np.linalg.eigvalsh(g_matrix)
         print(f"\nEigenvalues of G: {eigvals.round(4)}")
         print(f"Rank of G: {np.linalg.matrix_rank(g_matrix, tol=1e-10)}")
         flux = g_matrix[0, 1] * g_matrix[0, 2] * g_matrix[1, 2]
-        print(f"Flux g_01*g_02*g_12 = {flux:.4f} "
-              f"({'pi-flux' if flux < 0 else 'zero-flux'})")
+        print(
+            f"Flux g_01*g_02*g_12 = {flux:.4f} "
+            f"({'pi-flux' if flux < 0 else 'zero-flux'})"
+        )
+
+
+import numpy as np
+from scipy.optimize import minimize
+
+
+class EffectiveInteractionOptimizer2ndVersion:
+    """
+    Rank-1 drive optimization (d_A), plus an exact per-pair alpha_AB / c_AB
+    correction computed on top of a FIXED d ansatz.
+
+    Effective coupling model:
+        g_AB^eff = -alpha_AB * d_A * d_B,
+        alpha_AB = (1/2) * (1 + 1/(1+c_AB))
+
+    Convention: c_AB = 0  <=>  alpha_AB = 1  (pure rank-1, no correction).
+
+    Range, for c_AB in R \\ {-1}:
+        c_AB = -2            =>  alpha_AB = 0          (sign-flipped to zero)
+        c_AB -> -1 from above =>  alpha_AB -> +infinity
+        c_AB -> -1 from below =>  alpha_AB -> -infinity
+        c_AB = 0              =>  alpha_AB = 1          (no correction)
+        c_AB -> +-infinity    =>  alpha_AB -> 1/2        (the OTHER limit point)
+    alpha_AB covers all reals except alpha_AB = 1/2.
+
+    The numerically dangerous region is c_AB close to -1 (not c_AB large in
+    magnitude) -- that's where a tiny change in c_AB flips alpha_AB between
+    large positive and large negative values. get_alpha_and_c() flags pairs
+    where the fitted c_AB falls within `pole_tol` of -1.
+    """
+
+    def __init__(self, nqubit, n_restarts=2000, scale=2.0, ftol=1e-15, gtol=1e-10):
+        self.n = nqubit
+        self.n_restarts = n_restarts
+        self.scale = scale
+        self.ftol = ftol
+        self.gtol = gtol
+        self.mask = np.triu(np.ones((nqubit, nqubit)), k=1)
+        self.pairs = [(i, j) for i in range(nqubit) for j in range(i + 1, nqubit)]
+
+    # ───────────────────────── Stage 1: rank-1 fit ──────────────────────────
+
+    def reconstructed(self, d):
+        """Pure rank-1 reconstruction: -d_A * d_B, zero diagonal."""
+        outer = -np.outer(d, d)
+        np.fill_diagonal(outer, 0)
+        return outer
+
+    def objective(self, d, g_matrix):
+        diff = self.reconstructed(d) - g_matrix
+        return np.sum((diff * self.mask) ** 2)
+
+    def gradient(self, d, g_matrix):
+        diff = self.reconstructed(d) - g_matrix
+        diff_sym = (self.mask + self.mask.T) * diff
+        return -2 * diff_sym @ d
+
+    def optimize_rank1(self, g_matrix):
+        """
+        Fit d_A to minimize sum_{A<B} (g_AB - (-d_A d_B))^2, via multi-restart
+        L-BFGS-B. Unchanged from the original method.
+
+        Returns
+        -------
+        d_star : (n,) ndarray
+        best : scipy.optimize.OptimizeResult
+        """
+        eigvals, eigvecs = np.linalg.eigh(-g_matrix)
+        idx = np.argmax(np.abs(eigvals))
+        d0 = np.sqrt(max(abs(eigvals[idx]), 1e-8)) * eigvecs[:, idx]
+
+        opt_kwargs = dict(
+            jac=self.gradient,
+            args=(g_matrix,),
+            method="L-BFGS-B",
+            options={"ftol": self.ftol, "gtol": self.gtol, "maxiter": 10000},
+        )
+
+        best = minimize(self.objective, d0, **opt_kwargs)
+        for _ in range(self.n_restarts):
+            d_init = np.random.randn(self.n) * self.scale
+            res = minimize(self.objective, d_init, **opt_kwargs)
+            if res.fun < best.fun:
+                best = res
+
+        return best.x, best
+
+    # ───────────────────────── Stage 2: alpha_AB, c_AB on fixed d ───────────
+
+    @staticmethod
+    def _c_from_alpha(alpha):
+        """Invert alpha = (1/2)(1 + 1/(1+c))  =>  c = 1/(2*alpha - 1) - 1."""
+        return 1.0 / (2.0 * alpha - 1.0) - 1.0
+
+    def get_alpha_and_c(self, g_matrix, d_fixed, dAdB_tol=1e-12, pole_tol=1e-3):
+        """
+        Given a FIXED drive vector d_fixed (e.g. d_star from optimize_rank1),
+        solve for the exact alpha_AB and c_AB per pair that reconcile
+        d_fixed with the true g_matrix, using the c_AB=0 <-> alpha_AB=1
+        convention.
+
+        Parameters
+        ----------
+        g_matrix : (n,n) ndarray
+            Target coupling matrix.
+        d_fixed : (n,) ndarray
+            Fixed drive ansatz. Not modified.
+        dAdB_tol : float
+            Threshold below which d_A*d_B is treated as zero (no lever for
+            that pair; alpha/c left as nan).
+        pole_tol : float
+            Flag pairs where the fitted c_AB falls within this distance of
+            -1 (the genuine singularity of the alpha(c) map). Near this
+            point alpha_AB is numerically unstable (small changes in c_AB
+            flip alpha_AB between large positive and large negative).
+
+        Returns
+        -------
+        alpha_matrix : (n,n) ndarray, symmetric, nan on diagonal and at
+            undefined pairs (d_A*d_B == 0).
+        c_matrix : (n,n) ndarray, symmetric, nan at undefined pairs.
+        report : list of dict, per-pair diagnostics:
+            pair, g_target, rank1_value, reachable, alpha_AB, c_AB,
+            g_corrected, near_pole (bool), branch (str description).
+        g_corrected : (n,n) ndarray, reconstructed -alpha_AB * d_A * d_B
+            (falls back to the plain rank-1 value -d_A*d_B at undefined
+            pairs).
+        """
+        alpha_matrix = np.full((self.n, self.n), np.nan)
+        c_matrix = np.full((self.n, self.n), np.nan)
+        g_corrected = self.reconstructed(d_fixed)
+        report = []
+
+        for A, B in self.pairs:
+            dAdB = d_fixed[A] * d_fixed[B]
+            g_target = g_matrix[A, B]
+            rank1_val = -dAdB
+
+            entry = {"pair": (A, B), "g_target": g_target, "rank1_value": rank1_val}
+
+            if abs(dAdB) < dAdB_tol:
+                entry.update(
+                    reachable=False,
+                    reason="d_A*d_B == 0: alpha/c undefined, no lever for this pair",
+                    near_pole=False,
+                )
+                report.append(entry)
+                continue
+
+            alpha_AB = -g_target / dAdB  # exact, closed form, any real value
+
+            c_AB = self._c_from_alpha(alpha_AB)
+            near_pole = abs(c_AB + 1.0) < pole_tol
+
+            if abs(alpha_AB - 1.0) < 1e-12:
+                branch = "alpha==1 (no correction needed)"
+            elif alpha_AB > 1:
+                branch = "alpha>1 (boost vs rank-1)"
+            elif alpha_AB == 0:
+                branch = "alpha==0 (sign-flipped to zero)"
+            else:
+                branch = "alpha<1 (shrink/flip vs rank-1)"
+
+            g_corr = -alpha_AB * dAdB
+
+            alpha_matrix[A, B] = alpha_matrix[B, A] = alpha_AB
+            c_matrix[A, B] = c_matrix[B, A] = c_AB
+            g_corrected[A, B] = g_corrected[B, A] = g_corr
+
+            entry.update(
+                reachable=True,
+                alpha_AB=alpha_AB,
+                c_AB=c_AB,
+                branch=branch,
+                near_pole=near_pole,
+                g_corrected=g_corr,
+            )
+            report.append(entry)
+
+        return alpha_matrix, c_matrix, report, g_corrected
+
+    def print_report(self, g_matrix, d_fixed, alpha_matrix, c_matrix, report):
+        loss_rank1 = np.sum(((self.reconstructed(d_fixed) - g_matrix) * self.mask) ** 2)
+
+        print(f"d (fixed ansatz): {np.round(d_fixed, 4)}")
+        print(f"Rank-1-only loss: {loss_rank1:.6e}\n")
+
+        print(
+            f"{'pair':>6}  {'target':>9}  {'rank1':>9}  {'alpha_AB':>10}  "
+            f"{'c_AB':>10}  {'pole?':>6}  {'branch':>30}"
+        )
+        print("-" * 100)
+        for e in report:
+            A, B = e["pair"]
+            alpha = e.get("alpha_AB", float("nan"))
+            c = e.get("c_AB", float("nan"))
+            branch = e.get("branch", e.get("reason", ""))
+            pole_flag = "  <--" if e.get("near_pole") else ""
+            print(
+                f"  ({A},{B})  {e['g_target']:>9.4f}  {e['rank1_value']:>9.4f}  "
+                f"{alpha:>10.4f}  {c:>10.4f}  {pole_flag:>6}  {branch:>30}"
+            )
+
+        n_near_pole = sum(1 for e in report if e.get("near_pole"))
+        if n_near_pole:
+            print(
+                f"\n{n_near_pole} pair(s) flagged near the c_AB = -1 singularity "
+                f"(alpha_AB numerically unstable there)."
+            )
