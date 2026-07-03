@@ -26,9 +26,8 @@ import numpy as np
 from itertools import combinations
 import scipy.linalg
 
-from pyscf import gto, scf, fci, ao2mo
 from pyscf import doci as pyscf_doci
-
+from pyscf import gto, scf, fci, ao2mo, mcscf
 from doci_quantum_chemistry import get_doci_couplings
 
 
@@ -71,76 +70,57 @@ def build_doci_matrix(couplings):
     return H, configs
 
 
-def doci_fci_compare(atom, basis="sto-3g", active_space=None):
-    print("=" * 65)
-    label = f"  atom={atom}  basis={basis}" + (
-        f"  active_space={active_space}" if active_space else ""
-    )
-    print(label)
-    print("=" * 65)
+def doci_fci_compare(atom, basis="sto-3g", active_space=None, charge=0):
+    mol = gto.M(atom=atom, basis=basis, charge=charge, verbose=0)
+    mf = scf.RHF(mol).run()
 
     couplings = get_doci_couplings(
-        atom, basis=basis, active_space=active_space, verbose=False
+        atom, basis=basis, active_space=active_space, charge=charge, verbose=False
     )
-    mf = couplings["mf"]
     n_orb, n_pairs = couplings["n_orb"], couplings["n_pairs"]
 
-    # ---- our hand-rolled DOCI diagonalization -----------------------------
+    # ---- hand-rolled DOCI in active space ----------------------------------
     H_doci, configs = build_doci_matrix(couplings)
     evals, evecs = scipy.linalg.eigh(H_doci)
-    e_doci_manual = evals[0]
+    e_doci = evals[0]
 
-    # ---- PySCF FCI (exact reference) --------------------------------------
-    if active_space is None:
-        fci_solver = fci.FCI(mf)
-        e_fci, _ = fci_solver.kernel()
-    else:
-        from pyscf import mcscf
-
+    # ---- CASCI-FCI in active space (same space as DOCI) -------------------
+    if active_space is not None:
         n_act, n_elec_act = active_space
         mc = mcscf.CASCI(mf, n_act, n_elec_act)
-        e_fci = mc.kernel()[0]
-
-    # ---- PySCF's own DOCI solver (independent cross-check) ----------------
-    norb_full = mf.mo_coeff.shape[1]
-    nelec_full = mf.mol.nelectron
-    h1e_full = mf.mo_coeff.T @ mf.get_hcore() @ mf.mo_coeff
-    eri_full = ao2mo.kernel(mf._eri, mf.mo_coeff, compact=False).reshape(
-        norb_full, norb_full, norb_full, norb_full
-    )
-    nuc = mf.mol.energy_nuc()
-
-    if active_space is None:
-        doci_solver = pyscf_doci.DOCI(mf)
-        e_doci_pyscf_elec, _ = doci_solver.kernel(
-            h1e_full, eri_full, norb_full, nelec_full
-        )
-        e_doci_pyscf = e_doci_pyscf_elec + nuc
+        e_fci_active = mc.kernel()[0]
     else:
-        e_doci_pyscf = (
-            None  # skip cross-check for active-space case (different API path)
-        )
+        e_fci_active = None
 
+    # ---- true full-space FCI (always) -------------------------------------
+    fci_solver = fci.FCI(mf)
+    e_fci_full = fci_solver.kernel()[0]
+
+    # ---- print -------------------------------------------------------------
     print(
-        f"  n_orb={n_orb}  n_pairs={n_pairs}  |  DOCI space dim = C({n_orb},{n_pairs}) "
-        f"= {len(configs)}"
+        f"  n_orb={n_orb}  n_pairs={n_pairs}  |  DOCI dim=C({n_orb},{n_pairs})={len(configs)}"
     )
-    print(f"  RHF                         : {mf.e_tot:+.8f}")
-    print(f"  DOCI  (this script, hand-rolled diag) : {e_doci_manual:+.8f}")
-    if e_doci_pyscf is not None:
+    print(f"  RHF                           : {mf.e_tot:+.8f}")
+    print(f"  DOCI  (active space)          : {e_doci:+.8f}")
+    if e_fci_active is not None:
         print(
-            f"  DOCI  (pyscf.doci, cross-check)        : {e_doci_pyscf:+.8f}  "
-            f"(diff vs hand-rolled: {abs(e_doci_pyscf-e_doci_manual):.2e})"
+            f"  CASCI-FCI (same active space) : {e_fci_active:+.8f}  "
+            f"| seniority error = {(e_doci - e_fci_active)*1e3:+.4f} mHa"
         )
-    print(f"  FCI   (exact)               : {e_fci:+.8f}")
-    print(f"  DOCI - FCI error            : {(e_doci_manual - e_fci)*1e3:+.4f} mHa")
-    print()
+    print(
+        f"  FCI   (full space, exact)     : {e_fci_full:+.8f}  "
+        f"| total DOCI error = {(e_doci - e_fci_full)*1e3:+.4f} mHa"
+    )
+    if e_fci_active is not None:
+        print(
+            f"  truncation error (CASCI-full) : {(e_fci_active - e_fci_full)*1e3:+.4f} mHa"
+        )
 
     return {
         "e_rhf": mf.e_tot,
-        "e_doci": e_doci_manual,
-        "e_doci_pyscf": e_doci_pyscf,
-        "e_fci": e_fci,
+        "e_doci": e_doci,
+        "e_fci_active": e_fci_active,
+        "e_fci_full": e_fci_full,
         "n_configs": len(configs),
     }
 
@@ -148,7 +128,9 @@ def doci_fci_compare(atom, basis="sto-3g", active_space=None):
 if __name__ == "__main__":
     results = {}
     results["H2"] = doci_fci_compare("H 0 0 0; H 0 0 0.74", basis="sto-3g")
-    results["LiH"] = doci_fci_compare("Li 0 0 0; H 0 0 1.595", basis="sto-3g")
+    results["LiH"] = doci_fci_compare(
+        "Li 0 0 0; H 0 0 1.595", basis="cc-pvdz", active_space=(6, 2)
+    )
     results["H4"] = doci_fci_compare(
         "H 0 0 0; H 0 0 0.74; H 0 0 1.48; H 0 0 2.22", basis="sto-3g"
     )
@@ -156,14 +138,30 @@ if __name__ == "__main__":
         "O 0 0 0; H 0.757 0.586 0; H -0.757 0.586 0",  # equilibrium geometry, Angstrom
         basis="sto-3g",
     )
+    results["Be2"] = doci_fci_compare(
+        "Be 0 0 0; Be 0 0 2.45", basis="sto-3g", active_space=(6, 4)
+    )
     print("=" * 65)
     print("  SUMMARY")
     print("=" * 65)
     print(
-        f"  {'Molecule':<10} {'RHF':>12} {'DOCI':>12} {'FCI':>12} {'Err/mHa':>10} {'#configs':>9}"
+        f"  {'Molecule':<12} {'RHF':>12} {'DOCI':>12} {'CASCI-FCI':>12} "
+        f"{'Full-FCI':>12} {'Sen.Err/mHa':>12} {'Tot.Err/mHa':>12} {'#configs':>9}"
     )
     for name, r in results.items():
+        sen_err = (
+            (r["e_doci"] - r["e_fci_active"]) * 1e3
+            if r["e_fci_active"] is not None
+            else float("nan")
+        )
+        tot_err = (r["e_doci"] - r["e_fci_full"]) * 1e3
+        casci_str = (
+            f"{r['e_fci_active']:>12.6f}"
+            if r["e_fci_active"] is not None
+            else f"{'---':>12}"
+        )
         print(
-            f"  {name:<10} {r['e_rhf']:>12.6f} {r['e_doci']:>12.6f}"
-            f" {r['e_fci']:>12.6f} {(r['e_doci']-r['e_fci'])*1e3:>10.3f} {r['n_configs']:>9}"
+            f"  {name:<12} {r['e_rhf']:>12.6f} {r['e_doci']:>12.6f} "
+            f"{casci_str} {r['e_fci_full']:>12.6f} "
+            f"{sen_err:>12.3f} {tot_err:>12.3f} {r['n_configs']:>9}"
         )

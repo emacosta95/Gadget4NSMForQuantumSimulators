@@ -60,56 +60,62 @@ import numpy as np
 from pyscf import gto, scf, ao2mo, mcscf
 
 
-def get_doci_couplings(atom, basis="sto-3g", active_space=None, verbose=True):
+def get_doci_couplings(
+    atom,
+    basis="sto-3g",
+    active_space=None,
+    charge=0,
+    orb_type="rhf",  # "rhf" | "boys" | "pipek"
+    verbose=True,
+):
     """
     Compute the DOCI gadget couplings (eps_a, g_ab, v_ab) for any molecule.
 
     Parameters
     ----------
-    atom : str or list
-        PySCF atom spec, e.g. "H 0 0 0; H 0 0 0.74" or a list of
-        (symbol, (x,y,z)) tuples (Angstrom).
+    atom : str
+        PySCF atom spec.
     basis : str
         Basis set name (default 'sto-3g').
     active_space : tuple(int, int) or None
-        (n_act_orbitals, n_act_electrons). If given, runs RHF on the full
-        molecule, then restricts to an active space of n_act_orbitals MOs
-        around the Fermi level holding n_act_electrons, using PySCF's
-        mcscf.CASCI machinery to get the active-space effective integrals
-        (core orbitals frozen, their energy folded into E_core).
-        If None, uses ALL MOs (no restriction) -- only sensible for small
-        molecules / minimal basis sets, since the qubit count = n_orbitals.
+        (n_act_orbitals, n_act_electrons). If None, uses all MOs.
+    charge : int
+        Molecular charge (default 0). Use charge=2 for H4²⁺ etc.
+    orb_type : str
+        Orbital basis for the integral transform:
+          "rhf"   — canonical RHF orbitals (default, original behaviour)
+          "boys"  — Boys localized orbitals (Foster-Boys)
+          "pipek" — Pipek-Mezey localized orbitals
+        Localization is applied to ALL MOs when active_space=None,
+        or to ACTIVE MOs only when active_space is given.
+        NOTE: h1e from mc.get_h1eff() already encodes the frozen core;
+        only the active MO columns are rotated, leaving the core untouched.
     verbose : bool
         Print a short summary table.
 
     Returns
     -------
     dict with keys:
-        'eps'      : (n,) array, eps_a
-        'g'        : (n,n) symmetric array, g_ab (zero diagonal)
-        'v'        : (n,n) symmetric array, v_ab (zero diagonal)
-        'E_core'   : float, nuclear repulsion + frozen-core energy offset
-        'n_orb'    : int, number of active spatial orbitals = number of qubits
-        'n_pairs'  : int, number of electron pairs in the (active) space
-        'mf'       : the PySCF RHF object (for reference, e.g. mf.e_tot)
+        'eps', 'g', 'v', 'E_core', 'n_orb', 'n_pairs', 'mf', 'mo_coeff_used'
     """
-    mol = gto.M(atom=atom, basis=basis, verbose=0)
+    from pyscf import gto, scf, ao2mo, mcscf, lo
+
+    mol = gto.M(atom=atom, basis=basis, verbose=0, charge=charge)
     mf = scf.RHF(mol).run()
 
     nuc = mol.energy_nuc()
     n_elec_total = mol.nelectron
 
     if active_space is None:
-        # Full MO space, no frozen core
         n_act, n_elec_act = mf.mo_coeff.shape[1], n_elec_total
-        mo_coeff_act = mf.mo_coeff
         E_core = nuc
+        mo_act = mf.mo_coeff  # all MOs, shape (nao, n_act)
+        h1e = mo_act.T @ mf.get_hcore() @ mo_act  # one-body in MO basis
     else:
         n_act, n_elec_act = active_space
         if n_elec_act % 2 != 0:
             raise ValueError(
-                f"n_elec_act={n_elec_act} is odd; DOCI requires a closed-shell "
-                f"(all-paired) active space with an even electron count."
+                f"n_elec_act={n_elec_act} is odd; DOCI requires even electron count."
             )
         n_core_elec = n_elec_total - n_elec_act
         if n_core_elec % 2 != 0 or n_core_elec < 0:
@@ -117,28 +123,51 @@ def get_doci_couplings(atom, basis="sto-3g", active_space=None, verbose=True):
                 f"Invalid active space: {n_core_elec} core electrons "
                 f"(must be even and >= 0)."
             )
-        ncore = n_core_elec // 2  # frozen doubly-occupied core orbitals
+        ncore = n_core_elec // 2
 
-        # Use CASCI machinery purely to get the frozen-core-corrected
-        # one-/two-electron integrals and core energy in the active space.
-        # (We don't need to solve the CI problem here -- DOCI does that.)
         mc = mcscf.CASCI(mf, n_act, n_elec_act)
         mc.ncore = ncore
-        h1e_act, E_core = mc.get_h1eff()
-        eri_act = mc.get_h2eff()
-        eri_act = ao2mo.restore(1, eri_act, n_act)  # unpack to full (n,n,n,n)
-        h1e = h1e_act
-        eri = eri_act
+        h1e, E_core = mc.get_h1eff()  # core-corrected 1e integrals
+        mo_act = mf.mo_coeff[:, ncore : ncore + n_act]  # active MO columns only
 
-    if active_space is None:
-        h1e = mf.mo_coeff.T @ mf.get_hcore() @ mf.mo_coeff
-        eri = ao2mo.kernel(mf._eri, mf.mo_coeff, compact=False).reshape(
-            n_act, n_act, n_act, n_act
+    # ---- Optional orbital localization (applied to active MOs only) --------
+    if orb_type == "boys":
+        localizer = lo.Boys(mol, mo_act)
+        mo_loc = localizer.kernel()
+        # rotate h1e into localized basis (only needed for active_space=None)
+        if active_space is None:
+            h1e = mo_loc.T @ mf.get_hcore() @ mo_loc
+        else:
+            # h1e from get_h1eff() is in the *original* active MO basis;
+            # rotate it into the localized basis
+            # U: rotation matrix among active orbitals, mo_loc = mo_act @ U
+            U = mo_act.T @ mol.intor("int1e_ovlp") @ mo_loc  # overlap-based rotation
+            h1e = U.T @ h1e @ U
+        mo_act = mo_loc
+
+    elif orb_type == "pipek":
+        localizer = lo.PipekMezey(mol, mo_act)
+        mo_loc = localizer.kernel()
+        if active_space is None:
+            h1e = mo_loc.T @ mf.get_hcore() @ mo_loc
+        else:
+            U = mo_act.T @ mol.intor("int1e_ovlp") @ mo_loc
+            h1e = U.T @ h1e @ U
+        mo_act = mo_loc
+
+    elif orb_type != "rhf":
+        raise ValueError(
+            f"orb_type must be 'rhf', 'boys', or 'pipek', got {orb_type!r}"
         )
+
+    # ---- Two-electron integrals in the (possibly localized) active MO basis -
+    eri = ao2mo.kernel(mf._eri, mo_act, compact=False).reshape(
+        n_act, n_act, n_act, n_act
+    )
 
     n_pairs = n_elec_act // 2
 
-    # ---- Build couplings (chemist notation eri[p,q,r,s] = (pq|rs)) --------
+    # ---- Build couplings (chemist notation eri[p,q,r,s] = (pq|rs)) ---------
     eps = np.zeros(n_act)
     g = np.zeros((n_act, n_act))
     v = np.zeros((n_act, n_act))
@@ -149,26 +178,20 @@ def get_doci_couplings(atom, basis="sto-3g", active_space=None, verbose=True):
     for a in range(n_act):
         for b in range(n_act):
             if a != b:
-                g[a, b] = eri[a, b, a, b]  # (ab|ab) exchange
-                v[a, b] = 2 * (
-                    2 * eri[a, a, b, b] - eri[a, b, a, b]
-                )  # 2*[2(aa|bb)-(ab|ab)]
+                g[a, b] = eri[a, b, a, b]
+                v[a, b] = 2 * (2 * eri[a, a, b, b] - eri[a, b, a, b])
 
     if verbose:
         print(
-            f"DOCI couplings  |  basis={basis}  |  n_orb={n_act}  "
-            f"n_pairs={n_pairs}  |  E_core={E_core:+.8f} Ha"
+            f"DOCI couplings  |  basis={basis}  |  orb_type={orb_type}  "
+            f"|  n_orb={n_act}  n_pairs={n_pairs}  |  E_core={E_core:+.8f} Ha"
         )
         print(f"  eps_a : {np.array2string(eps, precision=6, suppress_small=True)}")
         if n_act <= 8:
             print("  g_ab (pair hopping):")
-            print(
-                " ", np.array2string(g, precision=5, suppress_small=True, prefix="  ")
-            )
+            print("  ", np.array2string(g, precision=5, suppress_small=True))
             print("  v_ab (density-density):")
-            print(
-                " ", np.array2string(v, precision=5, suppress_small=True, prefix="  ")
-            )
+            print("  ", np.array2string(v, precision=5, suppress_small=True))
 
     return {
         "eps": eps,
@@ -178,7 +201,66 @@ def get_doci_couplings(atom, basis="sto-3g", active_space=None, verbose=True):
         "n_orb": n_act,
         "n_pairs": n_pairs,
         "mf": mf,
+        "mo_coeff_used": mo_act,  # useful for visualization
     }
+
+
+def extract_doci_dicts(
+    atom, basis="sto-3g", active_space=None, verbose=True, charge=0, orb_type="rhf"
+):
+    """
+    Extract DOCI couplings for a molecule and return g_AB and v_AB as
+    dictionaries keyed by orbital pair (a, b) with a < b.
+
+    Returns
+    -------
+    g_dict : dict  { (a,b): g_ab }   pair-hopping (exchange integral)
+    v_dict : dict  { (a,b): v_ab }   density-density coupling
+    eps    : np.ndarray  shape (n_orb,)   on-site energies
+    E_core : float                        nuclear repulsion + frozen-core energy
+    meta   : dict   { 'n_orb', 'n_pairs', 'mf' }
+    """
+    res = get_doci_couplings(
+        atom,
+        basis=basis,
+        active_space=active_space,
+        verbose=verbose,
+        charge=charge,
+        orb_type=orb_type,
+    )
+
+    n = res["n_orb"]
+    g_dict = {}
+    v_dict = {}
+
+    for a in range(n):
+        for b in range(a + 1, n):
+            g_val = res["g"][a, b]
+            v_val = res["v"][a, b]
+            if g_val != 0.0:
+                g_dict[(a, b)] = g_val
+            if v_val != 0.0:
+                v_dict[(a, b)] = v_val
+
+    if verbose:
+        print(f"\ng_AB (pair hopping):")
+        for k, v in g_dict.items():
+            print(f"  g{k} = {v:+.8f}")
+        print(f"\nv_AB (density-density):")
+        for k, val in v_dict.items():
+            print(f"  v{k} = {val:+.8f}")
+
+    return (
+        g_dict,
+        v_dict,
+        res["eps"],
+        res["E_core"],
+        {
+            "n_orb": res["n_orb"],
+            "n_pairs": res["n_pairs"],
+            "mf": res["mf"],
+        },
+    )
 
 
 def doci_energy_check(couplings, occ_list):
