@@ -1,0 +1,77 @@
+loading the quasiparticle couplings ...
+diagonalizing the exact NSM Hamiltonian ...
+/home/ecosta/miniconda3/envs/nsm_gadget_env/lib/python3.11/site-packages/numba/typed/typeddict.py:39: NumbaTypeSafetyWarning: unsafe cast from int64 to uint64. Precision may be lost.
+  return d[key]
+  exact NSM ground state energy: -23.424939
+fitting the effective interaction ...
+  d_opt: [ 0.90513022 -1.02535362  0.96153052  0.79417758  1.10508836 -1.13502171]
+scanning 15 gammas x 4 ratios (60 diagonalizations) ...
+  gamma2=0.1*gamma  gamma=   5.000  F=0.584613  (61.0s)
+  gamma2=0.1*gamma  gamma=  26.071  F=0.976557  (57.4s)
+  gamma2=0.1*gamma  gamma=  47.143  F=0.992893  (58.3s)
+  gamma2=0.1*gamma  gamma=  68.214  F=0.996540  (47.7s)
+  gamma2=0.1*gamma  gamma=  89.286  F=0.997911  (46.6s)
+  gamma2=0.1*gamma  gamma= 110.357  F=0.998572  (14.7s)
+  gamma2=0.1*gamma  gamma= 131.429  F=0.998940  (5.6s)
+  gamma2=0.1*gamma  gamma= 152.500  F=0.999166  (6.0s)
+  gamma2=0.1*gamma  gamma= 173.571  F=0.999315  (5.4s)
+  gamma2=0.1*gamma  gamma= 194.643  F=0.999418  (7.0s)
+  gamma2=0.1*gamma  gamma= 215.714  F=0.999492  (10.2s)
+  gamma2=0.1*gamma  gamma= 236.786  F=0.999547  (5.6s)
+  gamma2=0.1*gamma  gamma= 257.857  F=0.999590  (5.5s)
+  gamma2=0.1*gamma  gamma= 278.929  F=0.999623  (5.4s)
+  gamma2=0.1*gamma  gamma= 300.000  F=0.999649  (5.4s)
+ratio 0.1 done
+
+  gamma2=0.5*gamma  gamma=   5.000  F=0.665802  (6.3s)
+  gamma2=0.5*gamma  gamma=  26.071  F=0.977682  (7.8s)
+  gamma2=0.5*gamma  gamma=  47.143  F=0.992024  (5.5s)
+  gamma2=0.5*gamma  gamma=  68.214  F=0.995453  (6.1s)
+  gamma2=0.5*gamma  gamma=  89.286  F=0.996771  (5.6s)
+  gamma2=0.5*gamma  gamma= 110.357  F=0.997412  (5.3s)
+  gamma2=0.5*gamma  gamma= 131.429  F=0.997771  (5.4s)
+  gamma2=0.5*gamma  gamma= 152.500  F=0.997992  (5.3s)
+  gamma2=0.5*gamma  gamma= 173.571  F=0.998138  (5.4s)
+  gamma2=0.5*gamma  gamma= 194.643  F=0.998239  (6.0s)
+  gamma2=0.5*gamma  gamma= 215.714  F=0.998312  (5.5s)
+  gamma2=0.5*gamma  gamma= 236.786  F=0.998366  (5.3s)
+  gamma2=0.5*gamma  gamma= 257.857  F=0.998408  (5.1s)
+  gamma2=0.5*gamma  gamma= 278.929  F=0.998441  (5.6s)
+  gamma2=0.5*gamma  gamma= 300.000  F=0.998466  (5.2s)
+ratio 0.5 done
+
+  gamma2=1.0*gamma  gamma=   5.000  F=0.682855  (6.6s)
+  gamma2=1.0*gamma  gamma=  26.071  F=0.976616  (6.9s)
+  gamma2=1.0*gamma  gamma=  47.143  F=0.990754  (8.4s)
+  gamma2=1.0*gamma  gamma=  68.214  F=0.994148  (7.6s)
+  gamma2=1.0*gamma  gamma=  89.286  F=0.995454  (5.5s)
+  gamma2=1.0*gamma  gamma= 110.357  F=0.996090  (5.7s)
+  gamma2=1.0*gamma  gamma= 131.429  F=0.996446  (5.4s)
+  gamma2=1.0*gamma  gamma= 152.500  F=0.996665  (5.3s)
+  gamma2=1.0*gamma  gamma= 173.571  F=0.996810  (7.3s)
+  gamma2=1.0*gamma  gamma= 194.643  F=0.996910  (7.0s)
+  gamma2=1.0*gamma  gamma= 215.714  F=0.996982  (7.4s)
+  gamma2=1.0*gamma  gamma= 236.786  F=0.997036  (5.9s)
+  gamma2=1.0*gamma  gamma= 257.857  F=0.997078  (5.2s)
+  gamma2=1.0*gamma  gamma= 278.929  F=0.997110  (5.4s)
+  gamma2=1.0*gamma  gamma= 300.000  F=0.997136  (5.4s)
+ratio 1.0 done
+
+  gamma2=2.0*gamma  gamma=   5.000  F=0.690314  (5.3s)
+  gamma2=2.0*gamma  gamma=  26.071  F=0.975043  (6.1s)
+  gamma2=2.0*gamma  gamma=  47.143  F=0.989063  (5.8s)
+  gamma2=2.0*gamma  gamma=  68.214  F=0.992434  (5.1s)
+  gamma2=2.0*gamma  gamma=  89.286  F=0.993732  (5.4s)
+  gamma2=2.0*gamma  gamma= 110.357  F=0.994364  (5.9s)
+  gamma2=2.0*gamma  gamma= 131.429  F=0.994718  (6.4s)
+  gamma2=2.0*gamma  gamma= 152.500  F=0.994936  (5.4s)
+  gamma2=2.0*gamma  gamma= 173.571  F=0.995079  (5.3s)
+  gamma2=2.0*gamma  gamma= 194.643  F=0.995179  (5.4s)
+  gamma2=2.0*gamma  gamma= 215.714  F=0.995251  (5.2s)
+  gamma2=2.0*gamma  gamma= 236.786  F=0.995305  (5.3s)
+  gamma2=2.0*gamma  gamma= 257.857  F=0.995346  (5.2s)
+  gamma2=2.0*gamma  gamma= 278.929  F=0.995378  (5.2s)
+  gamma2=2.0*gamma  gamma= 300.000  F=0.995403  (7.3s)
+ratio 2.0 done
+
+saved -> data/results/gamma2analysisO20.pkl
