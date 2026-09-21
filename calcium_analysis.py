@@ -2,11 +2,11 @@ import numpy as np
 
 from src.gadget import *
 
-ONEBODY = "data/matrix_elements_h_eff_2body/one_body_nn_sd.npz"
-TWOBODY = "data/matrix_elements_h_eff_2body/twobody_nn_sd.npz"
+ONEBODY = "data/matrix_elements_h_eff_2body/one_body_nn_pf.npz"
+TWOBODY = "data/matrix_elements_h_eff_2body/twobody_nn_pf.npz"
 
 
-n_particles = [1, 2, 3]
+n_particles = [1, 2, 3, 4, 5]
 
 gammas = np.logspace(0, np.log10(400), 20)  # 1 … 400
 ratios = np.logspace(0, 3, 20)  # J_F/γ = 1 … 1000
@@ -14,14 +14,14 @@ ratios = np.logspace(0, 3, 20)  # J_F/γ = 1 … 1000
 results = {}  # results[n] = dict of arrays
 
 for n_particle in n_particles:
-    label = f"O{16 + 2*n_particle}"
+    label = f"Ca{38 + 2*n_particle}"
     if n_particle == 1:
         p = QuasiparticleProblem.from_npz(
-            ONEBODY, n_levels=6, n_particles=n_particle, label=label
+            ONEBODY, n_levels=10, n_particles=n_particle, label=label
         )
     else:
         p = QuasiparticleProblem.from_npz(
-            ONEBODY, TWOBODY, n_levels=6, n_particles=n_particle, label=label
+            ONEBODY, TWOBODY, n_levels=10, n_particles=n_particle, label=label
         )
     E0, psi_log = p.exact_groundstate()
     print(f"[1] {label}: E0 = {E0:.6f}")

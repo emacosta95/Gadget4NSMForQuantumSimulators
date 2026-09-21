@@ -12,10 +12,14 @@ ferromagnetic coupling J_F, which gives the universal prefactor
 
 (the factorization holds on trees, one factor 1/J_F per bond; it breaks on
 cycles).  The sign must make the *product* of the physical amplitudes carry the
-sign of d_L: with k-1 positive amplitudes, the last one is -sign(d_L) for even k
-and +... careful -- `chain_drive` below implements
-`prod_i d_i = |d_L| * s` with `s = sign(d_L)` explicitly, which fixes the odd-k
-sign bug present in the notebooks.
+sign of d_L.  The k-th order degenerate process picks up (k-1) energy
+denominators E_0 - E_virtual < 0, so
+
+    d_eff = (-1)^{k-1} prod_i d_i / J_F^{k-1}
+
+and `chain_drive` sets sign(prod_i d_i) = (-1)^{k-1} sign(d_L).  (Checked by
+exact diagonalization of a bare chain for k = 1..5; the previous rule
+prod = -sign(d_L) was right only for even k -- the notebook cell-27 bug.)
 """
 
 from __future__ import annotations
@@ -34,6 +38,8 @@ class MinorEmbedding:
     intra_edges: List[Tuple[int, int]]  # ferromagnetic chain bonds
     inter_edges: List[Tuple[int, int]]  # couplers between different chains
     hardware_of: Dict[int, int] = field(default_factory=dict)  # local -> hardware label
+    # logical edges that must be realised; None = complete graph (old behaviour)
+    problem_edges: Optional[List[Tuple[int, int]]] = None
 
     # ------------------------------------------------------------------
     @property
@@ -67,6 +73,24 @@ class MinorEmbedding:
             out.setdefault(key, (u, v))
         return out
 
+    def all_couplers(self) -> Dict[Tuple[int, int], List[Tuple[int, int]]]:
+        """Logical pair (l_u < l_v) -> ALL physical couplers joining the chains."""
+        p2l = self.phys_to_logical()
+        out: Dict[Tuple[int, int], List[Tuple[int, int]]] = {}
+        for u, v in self.inter_edges:
+            lu, lv = p2l[u], p2l[v]
+            if lu == lv:
+                continue
+            key = (min(lu, lv), max(lu, lv))
+            out.setdefault(key, []).append((u, v))
+        return out
+
+    def required_pairs(self) -> List[Tuple[int, int]]:
+        if self.problem_edges is None:
+            L = self.n_logical
+            return [(i, j) for i in range(L) for j in range(i + 1, L)]
+        return sorted({(min(u, v), max(u, v)) for u, v in self.problem_edges})
+
     def multiplicity_report(self) -> Dict[Tuple[int, int], int]:
         """How many hardware couplers join each logical pair (should be >= 1)."""
         p2l = self.phys_to_logical()
@@ -81,15 +105,8 @@ class MinorEmbedding:
 
     def check(self, verbose: bool = True) -> bool:
         ok = True
-        missing = [
-            pair
-            for pair in (
-                (i, j)
-                for i in range(self.n_logical)
-                for j in range(i + 1, self.n_logical)
-            )
-            if pair not in self.couplers()
-        ]
+        have = self.couplers()
+        missing = [pair for pair in self.required_pairs() if pair not in have]
         if missing:
             ok = False
             if verbose:
@@ -103,22 +120,31 @@ class MinorEmbedding:
 
 # --------------------------------------------------------------------------
 def find_minor_embedding(
-    n_logical: int,
+    n_logical,
     hardware=None,
     pegasus_size: int = 16,
     tries: int = 10,
     seed: Optional[int] = None,
 ) -> MinorEmbedding:
-    """Embed the complete graph K_{n_logical} into a Pegasus graph.
+    """Embed a logical coupling graph into a Pegasus graph.
 
-    The gadget needs all-to-all connectivity (every pair carries a constraint
-    coupler), so K_n is the right problem graph.
+    `n_logical` is either an int (-> complete graph K_n, right for the
+    particle-conservation encoding, where every pair carries a constraint
+    coupler) or a networkx graph / edge list, e.g.
+    `GadgetHamiltonian(p, FirstQuantizationEncoding(p), ...).logical_graph()`.
+    The chosen embedding minimises the number of physical qubits (ties: the
+    longest chain).
     """
     import dwave_networkx as dnx
     import minorminer
     import networkx as nx
 
-    problem = nx.complete_graph(n_logical)
+    if isinstance(n_logical, (int, np.integer)):
+        problem = nx.complete_graph(int(n_logical))
+    elif isinstance(n_logical, nx.Graph):
+        problem = n_logical
+    else:
+        problem = nx.Graph(list(n_logical))
     hardware = hardware if hardware is not None else dnx.pegasus_graph(pegasus_size)
 
     best = None
@@ -128,7 +154,9 @@ def find_minor_embedding(
         )
         if not emb:
             continue
-        cost = max(len(c) for c in emb.values())
+        if set(emb) != set(problem.nodes):
+            continue
+        cost = (sum(len(c) for c in emb.values()), max(len(c) for c in emb.values()))
         if best is None or cost < best[0]:
             best = (cost, emb)
     if best is None:
@@ -165,6 +193,7 @@ def from_minorminer(embedding, hardware, problem_graph) -> MinorEmbedding:
         intra_edges=intra_edges,
         inter_edges=inter_edges,
         hardware_of={i: p for p, i in local.items()},
+        problem_edges=[(int(u), int(v)) for u, v in problem_graph.edges()],
     )
 
 
@@ -191,10 +220,9 @@ def chain_drive(
         magnitude = np.sqrt(abs(d_logical) * J_F * (1.0 + 2.0 * abs(d_logical) / J_F))
 
     amps = np.full(k, magnitude)
-    # The k-th order process through the ferromagnetic bonds carries an extra
-    # minus sign (the virtual domain-wall denominators are positive and the
-    # perturbative shift is -|V|^2/dE), so prod(amps) must be -sign(d_L)|...|.
-    amps[-1] *= -s
+    # k-th order process: (k-1) denominators E_0 - E_virt < 0, so
+    # d_eff = (-1)^(k-1) prod(amps) / J_F^(k-1)  ->  sign(prod) = (-1)^(k-1) s.
+    amps[-1] *= (-1) ** (k - 1) * s
     return amps
 
 
@@ -219,6 +247,17 @@ def physical_drive(
 def suggested_J_F(gamma: float, eps: float = 0.01) -> float:
     """The notebooks' heuristic J_F = gamma^2 / eps.
 
-    The stability requirement from the notes is J_F > (|d|/sqrt2) eps^{-L}.
+    Where the gamma^2 comes from: a chain qubit q carrying a constraint coupler
+    of weight w ~ gamma sees its virtual flip cost 2 J_F +- w depending on
+    whether the neighbouring chain is occupied.  The chain self-energy
+    -h_q^2 / (2 J_F +- w) therefore contains a CONFIGURATION-DEPENDENT part
+    ~ h_q^2 w / J_F^2, i.e. a spurious logical ZZ/field term.  With
+    h^2 = |d| J_F (k = 2) this is ~ |d| gamma / J_F, and it must be small
+    against the logical scale d^2/gamma:  J_F >> gamma^2 / |d|.
+    For k = 3 chains (h^2 = |d|^{2/3} J_F^{4/3}) the condition is stronger,
+    J_F >> gamma^3 / d^2.  Checked numerically (O18, k <= 2): the embedded
+    fidelity reaches the unembedded one only for J_F ~ 10-100 gamma^2.
+    The chain-stability requirement from the notes, J_F > (|d|/sqrt2) eps^{-L},
+    is a separate (weaker) condition.
     """
     return gamma**2 / eps

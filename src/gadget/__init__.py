@@ -29,6 +29,17 @@ Same problem in the second-quantized encoding, or on D-Wave:
 >>> enc3 = MinorEmbeddedEncoding(enc2, emb)
 >>> H3 = GadgetHamiltonian(problem, enc3, drive,
 ...                        GadgetParameters(gamma=200, J_F=suggested_J_F(200)))
+
+First quantization on D-Wave: embed the encoding's own coupling graph
+(~K_{N n}), not K_n.  Above 13 physical qubits `check()` switches to the
+truncated (<= max_flips bit flips from the code space) Loewdin solver:
+>>> fq = FirstQuantizationEncoding(problem)
+>>> prm = GadgetParameters(gamma=50, gamma2=5, J_F=1e3 * 50**2)
+>>> G = GadgetHamiltonian(problem, fq, drive, prm).logical_graph()
+>>> emb = find_minor_embedding(G, pegasus_size=8)      # O20: 23 qubits
+>>> H4 = GadgetHamiltonian(problem, MinorEmbeddedEncoding(fq, emb), drive, prm)
+>>> H4.truncation_scan((3, 4, 5))                      # pick max_flips
+>>> H4.max_flips = 4; H4.check()
 """
 
 from .adiabatic import AdiabaticResult, QuantumAdiabatic4Gadget
