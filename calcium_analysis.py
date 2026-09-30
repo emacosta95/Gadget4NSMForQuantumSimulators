@@ -8,8 +8,8 @@ TWOBODY = "data/matrix_elements_h_eff_2body/twobody_nn_pf.npz"
 
 n_particles = [1, 2, 3, 4, 5]
 
-gammas = np.logspace(0, np.log10(400), 20)  # 1 … 400
-ratios = np.logspace(0, 3, 20)  # J_F/γ = 1 … 1000
+gammas = np.logspace(0, np.log10(400), 10)  # 1 … 400
+ratios = np.logspace(1, 4, 10)  # J_F/γ = 1 … 1000
 
 results = {}  # results[n] = dict of arrays
 
