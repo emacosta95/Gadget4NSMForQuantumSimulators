@@ -9,6 +9,10 @@ each a 2 x 2 grid:
 
 Colour and marker = isotope (same nucleus looks the same in both encodings).
 
+Plus the scatter infidelity_vs_dim_gamma300.pdf: 1 - F at gamma = 300 for
+every nucleus and encoding, (a) vs logical Hilbert-space dimension C(D, N),
+(b) vs number of qubits.  Colour = encoding, marker = shell.
+
 Usage
 -----
   python plot_gadget_gamma_scan.py
@@ -104,6 +108,58 @@ def plot_metric(runs, metric, ylabel, path):
     print(f"-> {path}")
 
 
+def plot_scatter(runs, path, gamma0=300.0):
+    enc_style = {"fq": ("C3", "first quantization"), "pc": ("C0", "particle conservation")}
+    shell_marker = {"sd": ("o", "sd shell"), "pf": ("s", "pf shell")}
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
+    for ax, (xkey, xlabel) in zip(
+        axes,
+        [("dim", r"logical Hilbert-space dim. $C(D, N)$"), ("n_qubits", "number of qubits")],
+    ):
+        for r in runs:
+            k = int(np.argmin(np.abs(r["gammas"] - gamma0)))
+            y = float(r["infidelity"][k])
+            if not np.isfinite(y) or y <= 0:
+                continue
+            x = int(r[xkey])
+            ax.scatter(
+                x,
+                y,
+                color=enc_style[r["encoding"]][0],
+                marker=shell_marker[r["shell"]][0],
+                s=36,
+                zorder=3,
+            )
+            ax.annotate(
+                r["label"],
+                (x, y),
+                xytext=(4, 3),
+                textcoords="offset points",
+                fontsize=7,
+                fontweight="bold" if r["encoding"] == "fq" else "normal",
+            )
+        if xkey == "dim":
+            ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel(xlabel)
+        ax.grid(True, which="both", alpha=0.3)
+    axes[0].set_ylabel(rf"$1 - F$  ($\gamma = {gamma0:g}$)")
+    axes[0].set_title("(a)", loc="left", fontweight="bold")
+    axes[1].set_title("(b)", loc="left", fontweight="bold")
+    handles = [
+        plt.Line2D([], [], color=c, marker="o", ls="", label=lab)
+        for c, lab in enc_style.values()
+    ] + [
+        plt.Line2D([], [], color="k", marker=m, ls="", label=lab)
+        for m, lab in shell_marker.values()
+    ]
+    axes[1].legend(handles=handles, fontsize=8, framealpha=0.85)
+    fig.tight_layout()
+    fig.savefig(path)
+    plt.close(fig)
+    print(f"-> {path}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--indir", default="data/gamma_scan_bounded")
@@ -116,6 +172,7 @@ def main():
     os.makedirs(args.outdir, exist_ok=True)
     for metric, (ylabel, fname) in METRICS.items():
         plot_metric(runs, metric, ylabel, os.path.join(args.outdir, fname))
+    plot_scatter(runs, os.path.join(args.outdir, "infidelity_vs_dim_gamma300.pdf"))
 
 
 if __name__ == "__main__":
