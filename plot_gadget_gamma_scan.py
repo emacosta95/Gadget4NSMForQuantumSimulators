@@ -1,11 +1,13 @@
 """Figures for the gamma scan saved by gamma_gadget_scan.py.
 
-One figure per metric (1 - F, 1 - F in code space, leakage, energy error).
-Each figure has one panel per encoding:
-    (a) first quantization      (b) particle conservation
-and shows the oxygen (sd shell) and calcium (pf shell) isotopes together:
-oxygen = blue, circles, solid; calcium = orange, squares, dashed.
-Darker shade = more neutron pairs.
+One figure per metric (1 - F, 1 - F in code space, leakage, energy error),
+each a 2 x 2 grid:
+
+                    first quantization    particle conservation
+    oxygen  (sd)           (a)                    (b)
+    calcium (pf)           (c)                    (d)
+
+Colour and marker = isotope (same nucleus looks the same in both encodings).
 
 Usage
 -----
@@ -25,7 +27,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-ENCODINGS = [("fq", "(a)"), ("pc", "(b)")]  # first quantization, particle conservation
+ENCODINGS = ["fq", "pc"]  # columns: first quantization, particle conservation
+SHELLS = ["sd", "pf"]  # rows: oxygen, calcium
+MARKERS = "osD^v<>ph*"
 METRICS = {
     "infidelity": (r"$1 - F$", "infidelity_vs_gamma.pdf"),
     "infidelity_code_space": (
@@ -38,62 +42,62 @@ METRICS = {
         "rel_energy_error_vs_gamma.pdf",
     ),
 }
-# element: (colormap, marker, linestyle)
-STYLE = {
-    "sd": ("Blues", "o", "-"),
-    "pf": ("Oranges", "s", "--"),
-}
 
 
 def load(indir: str) -> list[dict]:
     runs = []
     for path in sorted(glob.glob(os.path.join(indir, "*.npz"))):
         z = np.load(path)
-        runs.append({k: z[k] for k in z.files})
-    for r in runs:
+        r = {k: z[k] for k in z.files}
         for k in ("label", "encoding", "shell"):
             r[k] = str(r[k])
         r["n_pairs"] = int(r["n_pairs"])
-    # oxygen first, then calcium; inside each by number of pairs
-    order = {s: i for i, s in enumerate(STYLE)}
-    runs.sort(key=lambda r: (order.get(r["shell"], 99), r["n_pairs"]))
+        runs.append(r)
+    runs.sort(key=lambda r: r["n_pairs"])
     return runs
 
 
-def color(run: dict, runs: list[dict]):
-    """Same nucleus -> same colour in every panel."""
-    cmap = plt.get_cmap(STYLE[run["shell"]][0])
+def style(run: dict, runs: list[dict]) -> dict:
+    """Same nucleus -> same colour and marker in every panel."""
     n_max = max(r["n_pairs"] for r in runs if r["shell"] == run["shell"])
-    t = 0.45 + 0.5 * (run["n_pairs"] - 1) / max(n_max - 1, 1)
-    return cmap(t)
+    t = (run["n_pairs"] - 1) / max(n_max - 1, 1)
+    return dict(
+        color=plt.get_cmap("viridis")(0.9 * t),
+        marker=MARKERS[(run["n_pairs"] - 1) % len(MARKERS)],
+    )
 
 
 def plot_metric(runs, metric, ylabel, path):
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
-    for ax, (enc, letter) in zip(axes, ENCODINGS):
-        for r in (r for r in runs if r["encoding"] == enc):
-            if r["shell"] not in STYLE:
-                continue
-            _, marker, ls = STYLE[r["shell"]]
-            y = np.asarray(r[metric], dtype=float)
-            ok = np.isfinite(y) & (y > 0)
-            ax.plot(
-                r["gammas"][ok],
-                y[ok],
-                marker=marker,
-                ls=ls,
-                ms=3.5,
-                lw=1.3,
-                color=color(r, runs),
-                label=r["label"],
-            )
-        ax.set_xscale("log")
-        ax.set_yscale("log")
+    fig, axes = plt.subplots(2, 2, figsize=(10, 7), sharex=True, sharey=True)
+    letters = iter("abcd")
+    for i, shell in enumerate(SHELLS):
+        for j, enc in enumerate(ENCODINGS):
+            ax = axes[i, j]
+            for r in runs:
+                if r["shell"] != shell or r["encoding"] != enc:
+                    continue
+                y = np.asarray(r[metric], dtype=float)
+                ok = np.isfinite(y) & (y > 0)
+                ax.plot(
+                    r["gammas"][ok],
+                    y[ok],
+                    ms=3.5,
+                    lw=1.3,
+                    label=r["label"],
+                    **style(r, runs),
+                )
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.grid(True, which="both", alpha=0.3)
+            ax.set_title(f"({next(letters)})", loc="left", fontweight="bold")
+            if ax.lines:
+                ax.legend(
+                    fontsize=7, ncol=2 if len(ax.lines) > 5 else 1, framealpha=0.85
+                )
+    for ax in axes[1]:
         ax.set_xlabel(r"$\gamma$")
-        ax.grid(True, which="both", alpha=0.3)
-        ax.set_title(letter, loc="left", fontweight="bold")
-        ax.legend(fontsize=7, ncol=2, framealpha=0.85)
-    axes[0].set_ylabel(ylabel)
+    for ax in axes[:, 0]:
+        ax.set_ylabel(ylabel)
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
