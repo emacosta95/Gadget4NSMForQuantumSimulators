@@ -9,14 +9,14 @@ each a 2 x 2 grid:
 
 Colour and marker = isotope (same nucleus looks the same in both encodings).
 
-Plus the scatter infidelity_vs_dim_gamma300.pdf: 1 - F at gamma = 300 for
-every nucleus and encoding, (a) vs logical Hilbert-space dimension C(D, N),
+Plus the scatter infidelity_vs_dim_gamma<G>.pdf: 1 - F at the largest gamma
+of the scan (G, or --scatter-gamma) for every nucleus and encoding, (a) vs logical Hilbert-space dimension C(D, N),
 (b) vs number of qubits.  Colour = encoding, marker = shell.
 
 Usage
 -----
   python plot_gadget_gamma_scan.py
-  python plot_gadget_gamma_scan.py --indir data/gamma_scan_bounded --outdir figures/gamma_scan_bounded
+  python plot_gadget_gamma_scan.py --indir data/gamma_scan_cmax4 --outdir figures/gamma_scan_cmax4
 """
 
 from __future__ import annotations
@@ -108,7 +108,7 @@ def plot_metric(runs, metric, ylabel, path):
     print(f"-> {path}")
 
 
-def plot_scatter(runs, path, gamma0=300.0):
+def plot_scatter(runs, path, gamma0):
     enc_style = {"fq": ("C3", "first quantization"), "pc": ("C0", "particle conservation")}
     shell_marker = {"sd": ("o", "sd shell"), "pf": ("s", "pf shell")}
     fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
@@ -162,8 +162,14 @@ def plot_scatter(runs, path, gamma0=300.0):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--indir", default="data/gamma_scan_bounded")
-    ap.add_argument("--outdir", default="figures/gamma_scan_bounded")
+    ap.add_argument("--indir", default="data/gamma_scan_cmax4")
+    ap.add_argument("--outdir", default="figures/gamma_scan_cmax4")
+    ap.add_argument(
+        "--scatter-gamma",
+        type=float,
+        default=None,
+        help="gamma of the scatter plot (default: largest gamma of the scan)",
+    )
     args = ap.parse_args()
 
     runs = load(args.indir)
@@ -172,7 +178,8 @@ def main():
     os.makedirs(args.outdir, exist_ok=True)
     for metric, (ylabel, fname) in METRICS.items():
         plot_metric(runs, metric, ylabel, os.path.join(args.outdir, fname))
-    plot_scatter(runs, os.path.join(args.outdir, "infidelity_vs_dim_gamma300.pdf"))
+    g0 = args.scatter_gamma or float(min(r["gammas"].max() for r in runs))
+    plot_scatter(runs, os.path.join(args.outdir, f"infidelity_vs_dim_gamma{g0:g}.pdf"), g0)
 
 
 if __name__ == "__main__":

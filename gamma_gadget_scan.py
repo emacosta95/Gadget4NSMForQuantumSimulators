@@ -33,23 +33,22 @@ Nuclei
 Usage
 -----
   python gamma_gadget_scan.py --shell sd pf --n-particles 1 2 3 \
-         --encodings pc fq --gammas 1 1000 25 --wf-gammas 3 30 300
+         --encodings pc fq --gammas 1 200 20 --wf-gammas 2 20 200
   python plot_gadget_gamma_scan.py            # figures from the saved .npz
 
 Drive fit
 ---------
-  Default: d and c_AB fitted together with every c_AB in ]-1, 8]
-  (--c-range -1 8).  c_AB > -1 keeps the doubly occupied register states,
-  at (1 + c_AB) gamma, above the code space; c_AB <= 8 bounds the coupler
+  Default: d and c_AB fitted together with every c_AB in ]-1, 4]
+  (--c-range -1 4).  c_AB > -1 keeps the doubly occupied register states,
+  at (1 + c_AB) gamma, above the code space; c_AB <= 4 bounds the coupler
   (2 + c_AB) gamma.  Inside the window the exact fit with the widest gap is
   used.  --c-range none falls back to the old fit with --cap.
   pc always uses the pure rank-1 drive (c_AB = 0): the c_AB term sits on
   the logical diagonal for N > 1 and is kept off for N = 1 as well, so the
   two encodings are compared with the same convention for every nucleus.
 
-Output: data/gamma_scan_bounded/<label>_<isospin>_<encoding>.npz
-(figures: python plot_gadget_gamma_scan.py --indir data/gamma_scan_bounded
- --outdir figures/gamma_scan_bounded)
+Output: data/gamma_scan_cmax4/<label>_<isospin>_<encoding>.npz
+(figures: python plot_gadget_gamma_scan.py)
 """
 
 from __future__ import annotations
@@ -273,7 +272,7 @@ def main():
         "--gammas",
         nargs=3,
         type=float,
-        default=[1, 1000, 25],
+        default=[1, 200, 20],
         metavar=("MIN", "MAX", "NUM"),
         help="log-spaced grid",
     )
@@ -281,7 +280,7 @@ def main():
         "--wf-gammas",
         nargs="+",
         type=float,
-        default=[3.0, 30.0, 300.0],
+        default=[2.0, 20.0, 200.0],
         help="gammas where the wavefunctions are stored (added to the grid)",
     )
     ap.add_argument(
@@ -296,7 +295,7 @@ def main():
     ap.add_argument(
         "--c-range",
         nargs="+",
-        default=["-1", "8"],
+        default=["-1", "4"],
         metavar="C",
         help="c_AB window ]MIN, MAX] for the bounded fit, or 'none' (old fit)",
     )
@@ -310,7 +309,7 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--max-qubits", type=int, default=20)
     ap.add_argument("--solver", default="auto", choices=["auto", "scipy", "sparse"])
-    ap.add_argument("--outdir", default="data/gamma_scan_bounded")
+    ap.add_argument("--outdir", default="data/gamma_scan_cmax4")
     args = ap.parse_args()
 
     cap = None if args.cap.lower() == "none" else float(args.cap)
