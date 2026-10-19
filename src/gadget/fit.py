@@ -107,3 +107,121 @@ def fit_drive(
     return DriveFit(
         d=d_opt, c_matrix=c_matrix, alpha_matrix=alpha_matrix, report=report, cap=cap
     )
+
+
+# --------------------------------------------------------------------------
+# Bounded fit: c_AB restricted to ]c_floor, c_max]
+#
+# A register with two particles (A, B) sits (1 + c_AB) gamma above the code
+# space, so c_AB <= -1 puts that state below the logical subspace; a large
+# c_AB stretches the energy scale (coupler (2 + c_AB) gamma).  `fit_drive`'s
+# `cap` does not bound c (it flips c < -cap to |c| and leaves c > cap alone),
+# which breaks the match of those pairs and leaves a floor in 1 - F at large
+# gamma.  Here d and c are fitted together inside the allowed window.
+# --------------------------------------------------------------------------
+def _c_from_alpha(alpha: np.ndarray) -> np.ndarray:
+    return 1.0 / (2.0 * alpha - 1.0) - 1.0
+
+
+def _bounded_fit_d(g1, c_min, c_max, d_starts, rng, n_restarts):
+    """Best d for c in [c_min, c_max]; alpha is profiled out in closed form."""
+    from scipy.optimize import least_squares
+
+    n = g1.shape[0]
+    iu = np.triu_indices(n, 1)
+    gt = g1[iu]
+    a_lo = 0.5 * (1.0 + 1.0 / (1.0 + c_max))
+    a_hi = 0.5 * (1.0 + 1.0 / (1.0 + c_min))
+
+    def alpha_of(d):
+        dd = d[iu[0]] * d[iu[1]]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            a = np.where(dd != 0.0, -gt / dd, a_lo)
+        return np.clip(np.nan_to_num(a, nan=a_lo), a_lo, a_hi), dd
+
+    def residual(d):
+        a, dd = alpha_of(d)
+        return gt + a * dd
+
+    scale = np.sqrt(np.abs(gt).mean())
+    starts = list(d_starts) + [
+        rng.normal(0.0, 1.0, n) * scale * rng.uniform(0.5, 2.0)
+        for _ in range(n_restarts)
+    ]
+    best = None
+    for x0 in starts:
+        r = least_squares(residual, x0, method="trf")
+        err = float(np.abs(r.fun).max())
+        if best is None or err < best[0]:
+            best = (err, r.x)
+    err, d = best
+    a, _ = alpha_of(d)
+    alpha = np.ones((n, n))
+    alpha[iu] = a
+    alpha[(iu[1], iu[0])] = a
+    c = _c_from_alpha(alpha)
+    np.fill_diagonal(c, 0.0)
+    return err, d, c, alpha
+
+
+def fit_drive_bounded(
+    g1: np.ndarray,
+    c_max: float = 8.0,
+    c_min: Optional[float] = None,
+    c_floor: float = -1.0,
+    floor_margin: float = 1e-3,
+    n_restarts: int = 150,
+    tol: float = 1e-10,
+    seed: Optional[int] = None,
+    verbose: bool = False,
+) -> DriveFit:
+    """Fit d and c together with every c_AB in ]c_floor, c_max].
+
+    c_min = None (default) picks the largest c_min that still gives an exact
+    fit (max |g_eff - g1| < tol), i.e. the exact fit with the widest gap
+    (1 + c) gamma to the doubly occupied states.  If no exact fit exists in
+    ]c_floor, c_max], the best fit at c_min = c_floor + floor_margin is
+    returned.  Pass a number to fix c_min instead.
+    """
+    rng = np.random.default_rng(seed)
+    n = g1.shape[0]
+    np.random.seed(seed)
+    d_rank1, _ = EffectiveInteractionOptimizer2ndVersion(
+        n, n_restarts=30
+    ).optimize_rank1(g1)
+
+    def run(cm):
+        return _bounded_fit_d(g1, cm, c_max, [d_rank1], rng, n_restarts)
+
+    lowest = c_floor + floor_margin
+    if c_min is None:
+        best = run(lowest)
+        c_used = lowest
+        if best[0] < tol:  # exact somewhere: push c_min up (bisection)
+            lo, hi = lowest, c_max
+            for _ in range(12):
+                mid = 0.5 * (lo + hi)
+                trial = run(mid)
+                if trial[0] < tol:
+                    lo, best = mid, trial
+                else:
+                    hi = mid
+            c_used = lo
+    else:
+        c_used = max(c_min, lowest)
+        best = run(c_used)
+
+    err, d, c, alpha = best
+    if verbose:
+        off = c[~np.eye(n, dtype=bool)]
+        print(
+            f"bounded fit: c in [{c_used:.3f}, {c_max}]  "
+            f"max|g_eff - g1| = {err:.2e}  c range [{off.min():.3f}, {off.max():.3f}]"
+        )
+    return DriveFit(
+        d=d,
+        c_matrix=c,
+        alpha_matrix=alpha,
+        report=[dict(max_residual=err, c_min=c_used, c_max=c_max)],
+        cap=None,
+    )

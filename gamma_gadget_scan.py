@@ -31,9 +31,18 @@ Nuclei
 
 Usage
 -----
-  python gadget_gamma_scan.py --shell sd pf --n-particles 1 2 3 \
+  python gamma_gadget_scan.py --shell sd pf --n-particles 1 2 3 \
          --encodings pc fq --gammas 1 1000 25 --wf-gammas 3 30 300
   python plot_gadget_gamma_scan.py            # figures from the saved .npz
+
+Drive fit
+---------
+  Default: d and c_AB fitted together with every c_AB in ]-1, 8]
+  (--c-range -1 8).  c_AB > -1 keeps the doubly occupied register states,
+  at (1 + c_AB) gamma, above the code space; c_AB <= 8 bounds the coupler
+  (2 + c_AB) gamma.  Inside the window the exact fit with the widest gap is
+  used.  --c-range none falls back to the old fit with --cap.
+  pc with N > 1 switches c off, so it uses the pure rank-1 drive instead.
 
 Output: data/gamma_scan/<label>_<isospin>_<encoding>.npz
 """
@@ -55,6 +64,7 @@ from src.gadget import (
     QuasiparticleProblem,
     alpha_from_c,
     fit_drive,
+    fit_drive_bounded,
 )
 
 DATA = "data/matrix_elements_h_eff_2body"
@@ -229,6 +239,9 @@ def scan_one(problem, drive, encoding_name, gammas, wf_gammas, args):
         c_matrix=drive.c_matrix,
         self_energy=args.self_energy,
         cap=np.nan if drive.cap is None else drive.cap,
+        c_min_used=np.nan
+        if not drive.report or "c_min" not in drive.report[0]
+        else drive.report[0]["c_min"],
         gamma2_ratio=np.nan if args.gamma2_ratio is None else args.gamma2_ratio,
         **res,
     )
@@ -275,7 +288,18 @@ def main():
         default=None,
         help="fq only: gamma2/gamma (default 1)",
     )
-    ap.add_argument("--cap", default="4.0", help="|c_AB| cap of fit_drive, or 'none'")
+    ap.add_argument(
+        "--c-range",
+        nargs="+",
+        default=["-1", "8"],
+        metavar="C",
+        help="c_AB window ]MIN, MAX] for the bounded fit, or 'none' (old fit)",
+    )
+    ap.add_argument(
+        "--cap",
+        default="4.0",
+        help="only with --c-range none: |c_AB| cap of fit_drive, or 'none'",
+    )
     ap.add_argument("--no-c", action="store_true", help="pure rank-1 gadget (c_AB = 0)")
     ap.add_argument("--n-restarts", type=int, default=50)
     ap.add_argument("--seed", type=int, default=42)
@@ -285,6 +309,9 @@ def main():
     args = ap.parse_args()
 
     cap = None if args.cap.lower() == "none" else float(args.cap)
+    bounded = args.c_range[0].lower() != "none"
+    if bounded:
+        c_floor, c_max = map(float, args.c_range)
     gmin, gmax, num = args.gammas
     wf_gammas = np.array(sorted(args.wf_gammas), dtype=float)
     gammas = np.union1d(
@@ -302,18 +329,31 @@ def main():
                 continue
             args._shell, args._isospin = shell, iso
             drive = None  # g1 does not depend on N: fit once per (shell, isospin)
+            drive_rank1 = None  # pc with N > 1: c is switched off
             pairs = args.n_particles or list(range(1, D))
             for N in pairs:
                 if not 1 <= N <= D - 1:
                     continue
                 p = build_problem(shell, iso, N)
                 if drive is None:
-                    drive = fit_drive(
-                        p.g1,
-                        n_restarts=args.n_restarts,
-                        cap=cap,
-                        use_c=not args.no_c,
-                        seed=args.seed,
+                    if bounded and not args.no_c:
+                        drive = fit_drive_bounded(
+                            p.g1,
+                            c_max=c_max,
+                            c_floor=c_floor,
+                            seed=args.seed,
+                            verbose=True,
+                        )
+                    else:
+                        drive = fit_drive(
+                            p.g1,
+                            n_restarts=args.n_restarts,
+                            cap=cap,
+                            use_c=not args.no_c,
+                            seed=args.seed,
+                        )
+                    drive_rank1 = fit_drive(
+                        p.g1, n_restarts=args.n_restarts, use_c=False, seed=args.seed
                     )
                     # coupling actually realised (capped c), not the fit's alpha
                     g_eff = -alpha_from_c(drive.c_matrix) * np.outer(drive.d, drive.d)
@@ -331,7 +371,8 @@ def main():
                         )
                         continue
                     print(f"  {p.label} [{enc_name}]  N={N}  dim={p.dim}  qubits={nq}")
-                    out = scan_one(p, drive, enc_name, gammas, wf_gammas, args)
+                    use = drive_rank1 if (enc_name == "pc" and N > 1) else drive
+                    out = scan_one(p, use, enc_name, gammas, wf_gammas, args)
                     path = os.path.join(args.outdir, f"{p.label}_{iso}_{enc_name}.npz")
                     np.savez(path, **out)
                     print(f"  -> {path}")

@@ -58,7 +58,7 @@ from .encodings import (
     ParticleConservationEncoding,
     state_index,
 )
-from .fit import DriveFit, alpha_from_c, fit_drive
+from .fit import DriveFit, alpha_from_c, fit_drive, fit_drive_bounded
 from .hamiltonian import GadgetHamiltonian, GadgetParameters
 from .problem import QuasiparticleProblem
 from .selfenergy import (
@@ -74,6 +74,7 @@ __all__ = [
     "QuasiparticleProblem",
     "DriveFit",
     "fit_drive",
+    "fit_drive_bounded",
     "alpha_from_c",
     "Encoding",
     "ParticleConservationEncoding",
