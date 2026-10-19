@@ -11,8 +11,9 @@ orbital (logical) basis  (a, b, c, ...) -> psi(a, b, c, ...).
 Encodings
 ---------
   pc   particle conservation (second quantization, D qubits,
-       constraint gamma (sum N - N_tot)^2).  For N_tot > 1 the c_AB terms are
-       switched off (they would sit on the logical diagonal); the second-order
+       constraint gamma (sum N - N_tot)^2).  The c_AB terms are always
+       switched off (for N_tot > 1 they would sit on the logical diagonal, and
+       the same convention is kept for N_tot = 1); the second-order
        self-energy is then configuration-independent, sum_A d_A^2 / (2 gamma),
        so "exact" = "uniform" there.
   fq   first quantization (N registers x D qubits, hardcore penalty gamma2),
@@ -42,9 +43,13 @@ Drive fit
   at (1 + c_AB) gamma, above the code space; c_AB <= 8 bounds the coupler
   (2 + c_AB) gamma.  Inside the window the exact fit with the widest gap is
   used.  --c-range none falls back to the old fit with --cap.
-  pc with N > 1 switches c off, so it uses the pure rank-1 drive instead.
+  pc always uses the pure rank-1 drive (c_AB = 0): the c_AB term sits on
+  the logical diagonal for N > 1 and is kept off for N = 1 as well, so the
+  two encodings are compared with the same convention for every nucleus.
 
-Output: data/gamma_scan/<label>_<isospin>_<encoding>.npz
+Output: data/gamma_scan_bounded/<label>_<isospin>_<encoding>.npz
+(figures: python plot_gadget_gamma_scan.py --indir data/gamma_scan_bounded
+ --outdir figures/gamma_scan_bounded)
 """
 
 from __future__ import annotations
@@ -305,7 +310,7 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--max-qubits", type=int, default=20)
     ap.add_argument("--solver", default="auto", choices=["auto", "scipy", "sparse"])
-    ap.add_argument("--outdir", default="data/gamma_scan")
+    ap.add_argument("--outdir", default="data/gamma_scan_bounded")
     args = ap.parse_args()
 
     cap = None if args.cap.lower() == "none" else float(args.cap)
@@ -329,7 +334,7 @@ def main():
                 continue
             args._shell, args._isospin = shell, iso
             drive = None  # g1 does not depend on N: fit once per (shell, isospin)
-            drive_rank1 = None  # pc with N > 1: c is switched off
+            drive_rank1 = None  # pc: c is always switched off
             pairs = args.n_particles or list(range(1, D))
             for N in pairs:
                 if not 1 <= N <= D - 1:
@@ -371,7 +376,7 @@ def main():
                         )
                         continue
                     print(f"  {p.label} [{enc_name}]  N={N}  dim={p.dim}  qubits={nq}")
-                    use = drive_rank1 if (enc_name == "pc" and N > 1) else drive
+                    use = drive_rank1 if enc_name == "pc" else drive
                     out = scan_one(p, use, enc_name, gammas, wf_gammas, args)
                     path = os.path.join(args.outdir, f"{p.label}_{iso}_{enc_name}.npz")
                     np.savez(path, **out)

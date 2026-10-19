@@ -12,7 +12,7 @@ Colour and marker = isotope (same nucleus looks the same in both encodings).
 Usage
 -----
   python plot_gadget_gamma_scan.py
-  python plot_gadget_gamma_scan.py --indir data/gamma_scan --outdir figures/gamma_scan
+  python plot_gadget_gamma_scan.py --indir data/gamma_scan_bounded --outdir figures/gamma_scan_bounded
 """
 
 from __future__ import annotations
@@ -106,8 +106,8 @@ def plot_metric(runs, metric, ylabel, path):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--indir", default="data/gamma_scan")
-    ap.add_argument("--outdir", default="figures/gamma_scan")
+    ap.add_argument("--indir", default="data/gamma_scan_bounded")
+    ap.add_argument("--outdir", default="figures/gamma_scan_bounded")
     args = ap.parse_args()
 
     runs = load(args.indir)
