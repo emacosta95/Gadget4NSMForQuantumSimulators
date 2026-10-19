@@ -1,171 +1,176 @@
-"""Figures from gadget_gamma_scan.py output (data/gamma_scan/*.npz).
+r"""
+Fig. (couplings): g1 and g2 of H_NSM-Q for neutron pairs, in one row:
+(a,b) sd-shell (USDB) g1, g2; (c,d) pf-shell (GXPF1A) g1, g2.
 
-fig 1  1-F vs gamma, one panel per shell (O | Ca), colour = logical dim,
-       solid = particle conservation (pc), dashed = first quantization (fq)
-fig 2  1-F at --gamma-ref vs Hilbert-space dimension (logical dim, qubits)
-fig 3  per nucleus/encoding: bar plot psi(a,b,c) exact vs gadget at the
-       stored gammas (top --top configurations by exact weight)
+Sized for a full-width figure* in a two-column REVTeX (PRR) layout:
+\textwidth = 7.0 in (178 mm). Include with
+    \includegraphics[width=\textwidth]{fig_couplings_sd_pf.pdf}
 
-python plot_gadget_gamma_scan.py --indir data/gamma_scan --outdir figures/gamma_scan
+Usage:
+    python plot_couplings_sd_pf.py [path/to/matrix_elements_h_eff_2body]
 """
 
-from __future__ import annotations
-
-import argparse
-import glob
-import os
-
+import sys
+from collections import deque
 import matplotlib
 
-matplotlib.use("Agg")  # file output only: no display / Qt needed (WSL, ssh, cluster)
-import matplotlib.pyplot as plt  # noqa: E402
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import LogNorm
-from matplotlib.lines import Line2D
+from matplotlib.colors import Normalize
 
-STYLE = {"pc": dict(ls="-", marker="o"), "fq": dict(ls="--", marker="s")}
-ENC_NAME = {"pc": "particle conservation", "fq": "first quantization"}
+DATA = sys.argv[1] if len(sys.argv) > 1 else "data/matrix_elements_h_eff_2body"
+OUT = "fig_couplings_sd_pf"
 
+# ---- figure geometry (inches): full two-column width, rectangular ----
+FIG_W, FIG_H = 7.0, 2.25
+ANNOTATE = {"sd": True, "pf": False}  # numbers in cells (pf 10x10 is too dense)
 
-def load(indir):
-    runs = []
-    for f in sorted(glob.glob(os.path.join(indir, "*.npz"))):
-        z = np.load(f, allow_pickle=True)
-        runs.append({k: (z[k].item() if z[k].ndim == 0 else z[k]) for k in z.files})
-    return runs
+plt.rcParams.update(
+    {
+        "font.size": 8,
+        "axes.titlesize": 8.5,
+        "axes.labelsize": 8,
+        "xtick.labelsize": 6.5,
+        "ytick.labelsize": 6.5,
+        "font.family": "serif",
+        "mathtext.fontset": "cm",
+        "pdf.fonttype": 42,
+    }
+)
 
-
-def fig_infidelity_vs_gamma(runs, outdir, key):
-    shells = sorted({r["shell"] for r in runs}, key=["sd", "pf"].index)
-    dims = [r["dim"] for r in runs]
-    # norm = LogNorm(vmin=min(dims), vmax=max(max(dims), min(dims) + 1))
-    # cmap = plt.get_cmap("viridis")
-    fig, axes = plt.subplots(
-        1, len(shells), figsize=(6 * len(shells), 4.5), squeeze=False
-    )
-    for ax, shell in zip(axes[0], shells):
-        for r in sorted(
-            (r for r in runs if r["shell"] == shell),
-            key=lambda r: (r["encoding"], r["n_pairs"]),
-        ):
-            ax.loglog(
-                r["gammas"],
-                r[key],
-                # color=cmap(norm(r["dim"])),
-                ms=3,
-                label=f"{r['label']} ({ENC_NAME[r['encoding']]})",
-                **STYLE[r["encoding"]],
-            )
-        ax.set_xlabel(r"$\gamma$")
-        ax.set_ylabel(
-            {
-                "infidelity": "1 - F",
-                "infidelity_code_space": "1 - F (code space)",
-                "leakage": "leakage",
-                "rel_energy_error": r"$|\Delta E|/|E|$",
-            }[key]
-        )
-        ax.set_title(f"{shell} shell")
-        ax.grid(True, which="both", alpha=0.3)
-        ax.legend(fontsize=6, ncol=2)
-    # sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
-    # fig.colorbar(sm, ax=axes[0].tolist(), label="logical Hilbert-space dim")
-    path = os.path.join(outdir, f"{key}_vs_gamma.pdf")
-    fig.savefig(path, bbox_inches="tight")
-    plt.close(fig)
-    return path
+# repo index -> orbital (inferred from h_A degeneracies; check vs NSMFermions)
+SHELLS = {
+    "sd": dict(
+        onebody="one_body_nn_sd.npz",
+        twobody="twobody_nn_sd.npz",
+        name=r"$sd$-shell",
+        groups=[(r"$0d_{5/2}$", 3), (r"$1s_{1/2}$", 1), (r"$0d_{3/2}$", 2)],
+    ),
+    "pf": dict(
+        onebody="one_body_nn_pf.npz",
+        twobody="twobody_nn_pf.npz",
+        name=r"$pf$-shell",
+        groups=[
+            (r"$0f_{7/2}$", 4),
+            (r"$1p_{3/2}$", 2),
+            (r"$0f_{5/2}$", 3),
+            (r"$1p_{1/2}$", 1),
+        ],
+    ),
+}
 
 
-def fig_infidelity_vs_dim(runs, outdir, gamma_ref):
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.2))
-    markers = {"sd": "o", "pf": "s"}
-    colors = {"pc": "C0", "fq": "C3"}
-    for r in runs:
-        i = int(np.argmin(np.abs(np.log(r["gammas"] / gamma_ref))))
-        y = r["infidelity"][i]
-        for ax, x in zip(axes, (r["dim"], r["n_qubits"])):
-            ax.loglog(x, y, markers[r["shell"]], color=colors[r["encoding"]], ms=7)
-            ax.annotate(
-                r["label"],
-                (x, y),
-                fontsize=7,
-                xytext=(3, 3),
-                textcoords="offset points",
-            )
-    axes[0].set_xlabel("logical Hilbert-space dim  C(D, N)")
-    axes[1].set_xlabel("number of qubits")
-    for ax in axes:
-        ax.set_ylabel(f"1 - F   ($\\gamma \\approx {gamma_ref:g}$)")
-        ax.grid(True, which="both", alpha=0.3)
-    handles = [
-        Line2D([], [], color=colors[e], marker="o", ls="", label=ENC_NAME[e])
-        for e in colors
-    ] + [
-        Line2D([], [], color="k", marker=markers[s], ls="", label=f"{s} shell")
-        for s in markers
+def load_onebody(path):
+    d = np.load(path)
+    keys, vals = d["keys"], d["values"]
+    D = int(keys.max()) + 1
+    h, g1 = np.zeros(D), np.zeros((D, D))
+    for (i, j), v in zip(keys, vals):
+        if i == j:
+            h[i] = v
+        else:
+            g1[i, j] = v
+    if np.allclose(np.tril(g1, -1), 0):  # only upper triangle stored
+        g1 = g1 + g1.T
+    return h, g1
+
+
+def load_twobody(path, D):
+    d = np.load(path)
+    g2 = np.zeros((D, D))
+    for k, v in zip(d["keys"], d["values"]):
+        i, j = int(k[0]), int(k[1])
+        g2[i, j] = g2[j, i] = v
+    return g2
+
+
+def gauge(g1, tol=1e-12):
+    """s_A = +-1 such that s_A s_B g1_AB <= 0 (BFS); returns s, frustrated edges."""
+    D = len(g1)
+    s = np.zeros(D, int)
+    s[0] = 1
+    q = deque([0])
+    while q:
+        A = q.popleft()
+        for B in range(D):
+            if B != A and abs(g1[A, B]) > tol and s[B] == 0:
+                s[B] = -s[A] * int(np.sign(g1[A, B]))
+                q.append(B)
+    frustrated = [
+        (A, B)
+        for A in range(D)
+        for B in range(A + 1, D)
+        if s[A] * s[B] * g1[A, B] > tol
     ]
-    axes[1].legend(handles=handles, fontsize=8)
-    path = os.path.join(outdir, f"infidelity_vs_dim_gamma{gamma_ref:g}.pdf")
-    fig.savefig(path, bbox_inches="tight")
-    plt.close(fig)
-    return path
+    return s, frustrated
 
 
-def fig_wavefunctions(r, outdir, top):
-    wf_g = np.atleast_1d(r["wf_gammas"])
-    psi_ex = r["psi_exact"]
-    order = np.argsort(-np.abs(psi_ex))[:top]
-    labels = ["(" + ",".join(map(str, c)) + ")" for c in r["configs"][order]]
-    n_bars = 1 + len(wf_g)
-    width = 0.8 / n_bars
-    x = np.arange(len(order))
-    fig, ax = plt.subplots(figsize=(max(6, 0.45 * len(order) * n_bars**0.5), 4))
-    ax.bar(x - 0.4 + width / 2, psi_ex[order], width, color="k", label="exact")
-    for k, g in enumerate(wf_g):
-        psi_g = r["psi_gadget"][k]
-        if np.all(np.isnan(psi_g)):
-            continue
-        j = int(np.argmin(np.abs(r["gammas"] - g)))
-        ax.bar(
-            x - 0.4 + width * (k + 1.5),
-            psi_g[order],
-            width,
-            label=f"gadget $\\gamma$={g:g}  (1-F={r['infidelity'][j]:.1e})",
-        )
-    ax.axhline(0, color="k", lw=0.5)
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=60, fontsize=7)
-    ax.set_xlabel("quasiparticle orbitals", fontsize=10)
-    ax.set_ylabel(r"$\psi(\text{orbitals})$", fontsize=10)
-    shown = "" if len(order) == r["dim"] else f", top {len(order)}/{r['dim']}"
-    ax.set_title(
-        f"{r['label']} - {ENC_NAME[r['encoding']]} ({r['n_qubits']} qubits{shown})"
-    )
-    ax.legend(fontsize=10)
-    path = os.path.join(outdir, f"wf_{r['label']}_{r['isospin']}_{r['encoding']}.pdf")
-    fig.savefig(path, bbox_inches="tight")
-    plt.close(fig)
-    return path
+def draw(ax, M, groups, vmax, annotate):
+    D = len(M)
+    M = M.astype(float).copy()
+    np.fill_diagonal(M, np.nan)
+    norm = Normalize(-vmax, vmax)  # symmetric range, default colormap (viridis)
+    im = ax.imshow(M, norm=norm, interpolation="nearest")
+    cmap = im.get_cmap()
+    # orbital blocks: separator lines + one label per orbital
+    edges = np.cumsum([0] + [n for _, n in groups])
+    for e in edges[1:-1]:
+        ax.axhline(e - 0.5, color="k", lw=0.6)
+        ax.axvline(e - 0.5, color="k", lw=0.6)
+    centres = [(edges[k] + edges[k + 1] - 1) / 2 for k in range(len(groups))]
+    labels = [lab for lab, _ in groups]
+    ax.set_xticks(centres, labels)
+    ax.set_yticks(centres, labels)
+    ax.tick_params(length=0)
+    if annotate:
+        for i in range(D):
+            for j in range(D):
+                if i != j:
+                    r_, g_, b_, _ = cmap(norm(M[i, j]))
+                    c = "k" if 0.299 * r_ + 0.587 * g_ + 0.114 * b_ > 0.5 else "w"
+                    ax.text(
+                        j,
+                        i,
+                        f"{M[i, j]:.2f}",
+                        ha="center",
+                        va="center",
+                        fontsize=4.2,
+                        color=c,
+                    )
+    return im
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    root = os.path.dirname(os.path.abspath(__file__))
-    ap.add_argument("--indir", default=os.path.join(root, "data", "gamma_scan"))
-    ap.add_argument("--outdir", default=os.path.join(root, "figures", "gamma_scan"))
-    ap.add_argument("--gamma-ref", type=float, default=300.0)
-    ap.add_argument("--top", type=int, default=20)
-    args, _ = ap.parse_known_args()
-    os.makedirs(args.outdir, exist_ok=True)
-    runs = load(args.indir)
-    if not runs:
-        raise SystemExit(f"no .npz in {args.indir}")
-    for key in ("infidelity", "infidelity_code_space", "leakage", "rel_energy_error"):
-        print(fig_infidelity_vs_gamma(runs, args.outdir, key))
-    print(fig_infidelity_vs_dim(runs, args.outdir, args.gamma_ref))
-    for r in runs:
-        print(fig_wavefunctions(r, args.outdir, args.top))
+fig = plt.figure(figsize=(FIG_W, FIG_H))
+gs = fig.add_gridspec(1, 6, width_ratios=[1, 1, 0.16, 1, 1, 0.05], wspace=0.08)
+axes = [fig.add_subplot(gs[0, k]) for k in (0, 1, 3, 4)]
+cax = fig.add_subplot(gs[0, 5])
+titles = [r"$g^{(1)}_{AB}$", r"$g^{(2)}_{AB}$"]
+panel = iter("abcd")
 
+mats = {}
+for key in ["sd", "pf"]:
+    cfg = SHELLS[key]
+    h, g1 = load_onebody(f"{DATA}/{cfg['onebody']}")
+    g2 = load_twobody(f"{DATA}/{cfg['twobody']}", len(h))
+    s, fr = gauge(g1)  # gauge only reported in the text, not plotted
+    print(f"{key}: gauge s = {s}, frustrated edges = {fr}")
+    mats[key] = (g1, g2)
+vmax = max(np.abs(M).max() for pair in mats.values() for M in pair)  # one shared scale
 
-if __name__ == "__main__":
-    main()
+for r, key in enumerate(["sd", "pf"]):
+    cfg = SHELLS[key]
+    for c, M in enumerate(mats[key]):
+        ax = axes[2 * r + c]
+        im = draw(ax, M, cfg["groups"], vmax, ANNOTATE[key])
+        ax.set_title(f"({next(panel)}) {cfg['name']}: {titles[c]}", pad=3)
+        if c > 0:
+            ax.set_yticklabels([])
+
+cb = fig.colorbar(im, cax=cax)
+cb.set_label("MeV", labelpad=2)
+cb.ax.tick_params(labelsize=6.5)
+
+fig.savefig(f"{OUT}.pdf", bbox_inches="tight")
+fig.savefig(f"{OUT}.png", dpi=300, bbox_inches="tight")
+print(f"saved {OUT}.pdf / .png  ({FIG_W} x {FIG_H} in)")
