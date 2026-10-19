@@ -76,10 +76,13 @@ def fit_drive(
     Parameters
     ----------
     cap :
-        Regularization used in the notebooks: `c[|c| > cap] = |c|`, which keeps
-        the pair away from the c = -1 pole at the price of breaking the exact
-        match of that pair. `None` disables it (exact c, but check stability:
-        c_AB = -2 is the independent-set degeneracy).
+        Upper bound c_max on c_AB.  Any c_AB <= -1 (doubly occupied register
+        state at (1 + c_AB) gamma, i.e. at or below the code space) and any
+        c_AB > cap is set to `cap`.  This keeps the code space at the bottom of
+        the spectrum and bounds the coupler (2 + c_AB) gamma, at the price of
+        breaking the exact match of those pairs.  `None` disables it (exact c,
+        no bounds).  For an exact fit inside ]-1, c_max] use
+        `fit_drive_bounded`.
     use_c :
         `False` returns the pure rank-1 gadget (c = 0), i.e. the original
         `EffectiveInteractionOptimizer` behaviour.
@@ -100,8 +103,7 @@ def fit_drive(
 
     c_matrix = np.nan_to_num(c_matrix, nan=0.0)
     if cap is not None:
-        mask = np.abs(c_matrix) > cap
-        c_matrix[mask] = np.abs(c_matrix[mask])
+        c_matrix[(c_matrix <= -1.0) | (c_matrix > cap)] = cap
     np.fill_diagonal(c_matrix, 0.0)
 
     return DriveFit(
@@ -115,9 +117,9 @@ def fit_drive(
 # A register with two particles (A, B) sits (1 + c_AB) gamma above the code
 # space, so c_AB <= -1 puts that state below the logical subspace; a large
 # c_AB stretches the energy scale (coupler (2 + c_AB) gamma).  `fit_drive`'s
-# `cap` does not bound c (it flips c < -cap to |c| and leaves c > cap alone),
-# which breaks the match of those pairs and leaves a floor in 1 - F at large
-# gamma.  Here d and c are fitted together inside the allowed window.
+# `cap` keeps c in ]-1, cap] by resetting the offending pairs to `cap`, which
+# breaks their match and leaves a floor in 1 - F at large gamma.  Here d and c
+# are fitted together inside the allowed window, so the match stays exact.
 # --------------------------------------------------------------------------
 def _c_from_alpha(alpha: np.ndarray) -> np.ndarray:
     return 1.0 / (2.0 * alpha - 1.0) - 1.0
