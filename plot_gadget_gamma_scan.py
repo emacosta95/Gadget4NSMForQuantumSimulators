@@ -109,12 +109,15 @@ def plot_metric(runs, metric, ylabel, path):
 
 
 def plot_scatter(runs, path, gamma0):
-    enc_style = {"fq": ("C3", "first quantization"), "pc": ("C0", "particle conservation")}
+    enc_style = {
+        "fq": ("C3", "FQE"),
+        "pc": ("C0", "PCE"),
+    }
     shell_marker = {"sd": ("o", "sd shell"), "pf": ("s", "pf shell")}
     fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
     for ax, (xkey, xlabel) in zip(
         axes,
-        [("dim", r"logical Hilbert-space dim. $C(D, N)$"), ("n_qubits", "number of qubits")],
+        [("dim", r"$\dim(\mathcal{H}_L)$"), ("n_qubits", r"$N_{G}$")],
     ):
         for r in runs:
             k = int(np.argmin(np.abs(r["gammas"] - gamma0)))
@@ -179,7 +182,9 @@ def main():
     for metric, (ylabel, fname) in METRICS.items():
         plot_metric(runs, metric, ylabel, os.path.join(args.outdir, fname))
     g0 = args.scatter_gamma or float(min(r["gammas"].max() for r in runs))
-    plot_scatter(runs, os.path.join(args.outdir, f"infidelity_vs_dim_gamma{g0:g}.pdf"), g0)
+    plot_scatter(
+        runs, os.path.join(args.outdir, f"infidelity_vs_dim_gamma{g0:g}.pdf"), g0
+    )
 
 
 if __name__ == "__main__":
