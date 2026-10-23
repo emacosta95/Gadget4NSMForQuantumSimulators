@@ -109,12 +109,15 @@ def plot_metric(runs, metric, ylabel, path):
 
 
 def plot_scatter(runs, path, gamma0):
-    enc_style = {"fq": ("C3", "first quantization"), "pc": ("C0", "particle conservation")}
+    enc_style = {
+        "fq": ("C3", "FQE"),
+        "pc": ("C0", "PCE"),
+    }
     shell_marker = {"sd": ("o", "sd shell"), "pf": ("s", "pf shell")}
     fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
     for ax, (xkey, xlabel) in zip(
         axes,
-        [("dim", r"logical Hilbert-space dim. $C(D, N)$"), ("n_qubits", "number of qubits")],
+        [("dim", r"$\dim(\mathcal{H}_L)$"), ("n_qubits", r"$N_{G}$")],
     ):
         pts = []
         for r in runs:
@@ -156,9 +159,9 @@ def plot_scatter(runs, path, gamma0):
                 ha="left" if dx > 0 else "right",
                 fontweight="bold" if bold else "normal",
             )
-        ax.set_xlabel(xlabel)
+        ax.set_xlabel(xlabel, fontsize=15)
         ax.grid(True, which="both", alpha=0.3)
-    axes[0].set_ylabel(rf"$1 - F$  ($\gamma = {gamma0:g}$)")
+    axes[0].set_ylabel(rf"$1 - F$  ($\gamma = {gamma0:g} \omega$)", fontsize=15)
     axes[0].set_title("(a)", loc="left", fontweight="bold")
     axes[1].set_title("(b)", loc="left", fontweight="bold")
     handles = [
@@ -168,7 +171,7 @@ def plot_scatter(runs, path, gamma0):
         plt.Line2D([], [], color="k", marker=m, ls="", label=lab)
         for m, lab in shell_marker.values()
     ]
-    axes[1].legend(handles=handles, fontsize=8, framealpha=0.85)
+    axes[1].legend(handles=handles, fontsize=15, framealpha=0.85)
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
@@ -194,7 +197,9 @@ def main():
     for metric, (ylabel, fname) in METRICS.items():
         plot_metric(runs, metric, ylabel, os.path.join(args.outdir, fname))
     g0 = args.scatter_gamma or float(min(r["gammas"].max() for r in runs))
-    plot_scatter(runs, os.path.join(args.outdir, f"infidelity_vs_dim_gamma{g0:g}.pdf"), g0)
+    plot_scatter(
+        runs, os.path.join(args.outdir, f"infidelity_vs_dim_gamma{g0:g}.pdf"), g0
+    )
 
 
 if __name__ == "__main__":
