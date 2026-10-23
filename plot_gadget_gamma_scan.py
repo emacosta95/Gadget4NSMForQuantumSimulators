@@ -116,6 +116,7 @@ def plot_scatter(runs, path, gamma0):
         axes,
         [("dim", r"logical Hilbert-space dim. $C(D, N)$"), ("n_qubits", "number of qubits")],
     ):
+        pts = []
         for r in runs:
             k = int(np.argmin(np.abs(r["gammas"] - gamma0)))
             y = float(r["infidelity"][k])
@@ -130,17 +131,31 @@ def plot_scatter(runs, path, gamma0):
                 s=36,
                 zorder=3,
             )
-            ax.annotate(
-                r["label"],
-                (x, y),
-                xytext=(4, 3),
-                textcoords="offset points",
-                fontsize=7,
-                fontweight="bold" if r["encoding"] == "fq" else "normal",
-            )
+            pts.append((x, y, r["label"], r["encoding"] == "fq"))
         if xkey == "dim":
             ax.set_xscale("log")
         ax.set_yscale("log")
+        ax.autoscale_view()
+        # labels: push apart the ones that would overlap (same dimension /
+        # same qubit count, e.g. Ca48 and Ca52 both at C(10, 4) = C(10, 6))
+        offsets = [(4, 3), (4, -9), (-4, 3), (-4, -9), (4, 11), (-4, 11)]
+        placed = []  # (x_disp, y_disp) of used label anchors
+        for x, y, label, bold in sorted(pts, key=lambda t: (t[0], t[1])):
+            xd, yd = ax.transData.transform((x, y))
+            for dx, dy in offsets:
+                anchor = (xd + dx * 1.4, yd + dy * 1.4)
+                if all(abs(anchor[0] - a) > 30 or abs(anchor[1] - b) > 9 for a, b in placed):
+                    break
+            placed.append(anchor)
+            ax.annotate(
+                label,
+                (x, y),
+                xytext=(dx, dy),
+                textcoords="offset points",
+                fontsize=7,
+                ha="left" if dx > 0 else "right",
+                fontweight="bold" if bold else "normal",
+            )
         ax.set_xlabel(xlabel)
         ax.grid(True, which="both", alpha=0.3)
     axes[0].set_ylabel(rf"$1 - F$  ($\gamma = {gamma0:g}$)")
