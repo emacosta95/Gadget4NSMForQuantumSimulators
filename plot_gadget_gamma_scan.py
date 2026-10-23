@@ -34,6 +34,7 @@ import numpy as np  # noqa: E402
 ENCODINGS = ["fq", "pc"]  # columns: first quantization, particle conservation
 SHELLS = ["sd", "pf"]  # rows: oxygen, calcium
 MARKERS = "osD^v<>ph*"
+LABEL_FONTSIZE = 9  # nucleus labels in the scatter plot
 METRICS = {
     "infidelity": (r"$1 - F$", "infidelity_vs_gamma.pdf"),
     "infidelity_code_space": (
@@ -139,26 +140,36 @@ def plot_scatter(runs, path, gamma0):
             ax.set_xscale("log")
         ax.set_yscale("log")
         ax.autoscale_view()
-        # labels: push apart the ones that would overlap (same dimension /
-        # same qubit count, e.g. Ca48 and Ca52 both at C(10, 4) = C(10, 6))
-        offsets = [(4, 3), (4, -9), (-4, 3), (-4, -9), (4, 11), (-4, 11)]
-        placed = []  # (x_disp, y_disp) of used label anchors
+        # labels: try several offsets and keep the first whose text box does
+        # not overlap an already placed label (Ca48 / Ca52 share
+        # C(10, 4) = C(10, 6); in (b) every Ca isotope sits at N_G = 10)
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        offsets = [(5, 4), (5, -13), (-5, 4), (-5, -13), (5, 15), (-5, 15),
+                   (5, -26), (-5, -26), (5, 28), (-5, 28), (14, 4), (-14, 4)]
+        boxes = []
+        inside = ax.get_window_extent(renderer).expanded(1.02, 1.02)
         for x, y, label, bold in sorted(pts, key=lambda t: (t[0], t[1])):
-            xd, yd = ax.transData.transform((x, y))
             for dx, dy in offsets:
-                anchor = (xd + dx * 1.4, yd + dy * 1.4)
-                if all(abs(anchor[0] - a) > 30 or abs(anchor[1] - b) > 9 for a, b in placed):
+                ann = ax.annotate(
+                    label,
+                    (x, y),
+                    xytext=(dx, dy),
+                    textcoords="offset points",
+                    fontsize=LABEL_FONTSIZE,
+                    ha="left" if dx > 0 else "right",
+                    fontweight="bold" if bold else "normal",
+                )
+                bb = ann.get_window_extent(renderer).expanded(1.05, 1.15)
+                if inside.contains(bb.x0, bb.y0) and inside.contains(bb.x1, bb.y1) and not any(
+                    bb.overlaps(b) for b in boxes
+                ):
+                    boxes.append(bb)
                     break
-            placed.append(anchor)
-            ax.annotate(
-                label,
-                (x, y),
-                xytext=(dx, dy),
-                textcoords="offset points",
-                fontsize=7,
-                ha="left" if dx > 0 else "right",
-                fontweight="bold" if bold else "normal",
-            )
+                ann.remove()
+            else:  # every slot taken: keep the last attempt
+                boxes.append(bb)
+                ax.add_artist(ann)
         ax.set_xlabel(xlabel, fontsize=15)
         ax.grid(True, which="both", alpha=0.3)
     axes[0].set_ylabel(rf"$1 - F$  ($\gamma = {gamma0:g} \omega$)", fontsize=15)
