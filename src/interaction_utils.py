@@ -345,10 +345,15 @@ class EffectiveInteractionOptimizer2ndVersion:
         diff_sym = (self.mask + self.mask.T) * diff
         return -2 * diff_sym @ d
 
-    def optimize_rank1(self, g_matrix):
+    def optimize_rank1(self, g_matrix, d_max=None):
         """
         Fit d_A to minimize sum_{A<B} (g_AB - (-d_A d_B))^2, via multi-restart
         L-BFGS-B. Unchanged from the original method.
+
+        d_max : optional bound |d_A| <= d_max.  Needed when g has a bipartite
+        pattern of zeros (e.g. after a stoquastic truncation): the unbounded
+        least squares then runs away to one huge d_A, which breaks the
+        perturbative gadget (d^2 / gamma no longer small).
 
         Returns
         -------
@@ -358,17 +363,22 @@ class EffectiveInteractionOptimizer2ndVersion:
         eigvals, eigvecs = np.linalg.eigh(-g_matrix)
         idx = np.argmax(np.abs(eigvals))
         d0 = np.sqrt(max(abs(eigvals[idx]), 1e-8)) * eigvecs[:, idx]
+        if d_max is not None:
+            d0 = np.clip(d0, -d_max, d_max)
 
         opt_kwargs = dict(
             jac=self.gradient,
             args=(g_matrix,),
             method="L-BFGS-B",
+            bounds=None if d_max is None else [(-d_max, d_max)] * self.n,
             options={"ftol": self.ftol, "gtol": self.gtol, "maxiter": 10000},
         )
 
         best = minimize(self.objective, d0, **opt_kwargs)
         for _ in range(self.n_restarts):
             d_init = np.random.randn(self.n) * self.scale
+            if d_max is not None:
+                d_init = np.clip(d_init, -d_max, d_max)
             res = minimize(self.objective, d_init, **opt_kwargs)
             if res.fun < best.fun:
                 best = res

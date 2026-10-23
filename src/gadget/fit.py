@@ -70,8 +70,12 @@ def fit_drive(
     use_c: bool = True,
     seed: Optional[int] = None,
     verbose: bool = False,
+    d_max: Optional[float] = None,
 ) -> DriveFit:
     """Stage 1: rank-1 d_A.  Stage 2: closed-form c_AB on the fixed d.
+
+    d_max : optional bound |d_A| <= d_max on the rank-1 fit (see
+        `EffectiveInteractionOptimizer2ndVersion.optimize_rank1`).
 
     Parameters
     ----------
@@ -92,7 +96,7 @@ def fit_drive(
 
     n = g1.shape[0]
     opt = EffectiveInteractionOptimizer2ndVersion(n, n_restarts=n_restarts)
-    d_opt, _ = opt.optimize_rank1(g1)
+    d_opt, _ = opt.optimize_rank1(g1, d_max=d_max)
 
     if not use_c:
         return DriveFit(d=d_opt, c_matrix=np.zeros((n, n)), cap=None)
@@ -125,7 +129,7 @@ def _c_from_alpha(alpha: np.ndarray) -> np.ndarray:
     return 1.0 / (2.0 * alpha - 1.0) - 1.0
 
 
-def _bounded_fit_d(g1, c_min, c_max, d_starts, rng, n_restarts):
+def _bounded_fit_d(g1, c_min, c_max, d_starts, rng, n_restarts, d_max=None):
     """Best d for c in [c_min, c_max]; alpha is profiled out in closed form."""
     from scipy.optimize import least_squares
 
@@ -151,8 +155,11 @@ def _bounded_fit_d(g1, c_min, c_max, d_starts, rng, n_restarts):
         for _ in range(n_restarts)
     ]
     best = None
+    bounds = (-np.inf, np.inf) if d_max is None else (-d_max, d_max)
     for x0 in starts:
-        r = least_squares(residual, x0, method="trf")
+        if d_max is not None:
+            x0 = np.clip(x0, -0.99 * d_max, 0.99 * d_max)
+        r = least_squares(residual, x0, method="trf", bounds=bounds)
         err = float(np.abs(r.fun).max())
         if best is None or err < best[0]:
             best = (err, r.x)
@@ -176,8 +183,11 @@ def fit_drive_bounded(
     tol: float = 1e-10,
     seed: Optional[int] = None,
     verbose: bool = False,
+    d_max: Optional[float] = None,
 ) -> DriveFit:
     """Fit d and c together with every c_AB in ]c_floor, c_max].
+
+    d_max : optional bound |d_A| <= d_max.
 
     c_min = None (default) picks the largest c_min that still gives an exact
     fit (max |g_eff - g1| < tol), i.e. the exact fit with the widest gap
@@ -190,10 +200,10 @@ def fit_drive_bounded(
     np.random.seed(seed)
     d_rank1, _ = EffectiveInteractionOptimizer2ndVersion(
         n, n_restarts=30
-    ).optimize_rank1(g1)
+    ).optimize_rank1(g1, d_max=d_max)
 
     def run(cm):
-        return _bounded_fit_d(g1, cm, c_max, [d_rank1], rng, n_restarts)
+        return _bounded_fit_d(g1, cm, c_max, [d_rank1], rng, n_restarts, d_max=d_max)
 
     lowest = c_floor + floor_margin
     if c_min is None:
