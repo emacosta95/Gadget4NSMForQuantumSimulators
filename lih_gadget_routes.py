@@ -39,6 +39,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
 
 from src.gadget import (  # noqa: E402
     FirstQuantizationEncoding,
@@ -222,7 +223,7 @@ def gamma_scan(args):
 def dissociation(args):
     Rs = np.linspace(args.R_range[0], args.R_range[1], int(args.R_range[2]))
     out = dict(R=Rs, gammas=np.array(args.diss_gammas), basis=args.basis)
-    keys = [(ro, en) for ro in ROUTES for en in ENCODINGS if not (ro == "trunc" and en == "fq")]
+    keys = [(ro, en) for ro in ROUTES for en in ENCODINGS]
     for k in ["e_rhf", "e_doci", "e_fci", "e_trunc_logical"]:
         out[k] = []
     for ro, en in keys:
@@ -240,7 +241,8 @@ def dissociation(args):
         line = f"R={R:5.3f}  DOCI={out['e_doci'][-1]:+.6f}  FCI={b['e_fci']:+.6f}"
         for ro, en in keys:
             for g in args.diss_gammas:
-                r = evaluate(c, ro, en, g)
+                c_min = args.c_min_trunc if (ro == "trunc" and en == "fq") else None
+                r = evaluate(c, ro, en, g, c_min=c_min)
                 out[f"{ro}_{en}_g{g:g}_energy"].append(r["energy"])
                 out[f"{ro}_{en}_g{g:g}_infidelity"].append(r["infidelity"])
                 if ro == "trunc":
@@ -291,34 +293,51 @@ def plot_gamma_scan(d, path):
 
 
 def plot_dissociation(d, path):
+    """2 x 3 grid: rows = encoding (PCE, FQE), columns = energy, |E - E_DOCI|,
+    1 - F vs R.  Colour = gamma, solid = no flip (stoquastic truncation),
+    dashed = flip (H -> -H, top state)."""
     R, gammas = d["R"], d["gammas"]
-    fig, axes = plt.subplots(1, 3, figsize=(16, 4.6))
-    axes[0].plot(R, d["e_fci"], "k-", lw=2.5, label="FCI")
-    axes[0].plot(R, d["e_doci"], color="C2", lw=2.5, label="DOCI")
-    axes[0].plot(R, d["e_trunc_logical"], color="C2", ls=":", lw=1.5, label="DOCI, truncated")
-    lw_of = {g: 1.2 + 0.8 * i for i, g in enumerate(gammas)}
-    for (ro, en), (col, ls) in STYLE.items():
-        for g in gammas:
-            k = f"{ro}_{en}_g{g:g}"
-            if f"{k}_energy" not in d:
-                continue
-            lab = rf"{LABEL[(ro, en)]}, $\gamma={g:g}\,\omega$"
-            axes[0].plot(R, d[f"{k}_energy"], color=col, ls=ls, lw=lw_of[g], marker="o", ms=3)
-            axes[1].plot(R, np.abs(d[f"{k}_energy"] - d["e_doci"]), color=col, ls=ls, lw=lw_of[g], marker="o", ms=3, label=lab)
-            axes[2].plot(R, d[f"{k}_infidelity"], color=col, ls=ls, lw=lw_of[g], marker="o", ms=3)
-    axes[1].plot(R, np.abs(d["e_trunc_logical"] - d["e_doci"]), color="C2", ls=":", lw=1.5, label="truncation alone")
-    axes[1].axhline(CHEM_ACC, color="gray", ls=":", lw=2, label="chemical accuracy")
-    axes[1].plot(R, np.abs(d["e_doci"] - d["e_fci"]), color="k", ls="-", lw=1, label=r"$|E_{\rm DOCI} - E_{\rm FCI}|$")
-    axes[0].set_ylabel("energy [Ha]", fontsize=13)
-    axes[1].set_ylabel(r"$|E_{\rm gadget} - E_{\rm DOCI}|$ [Ha]", fontsize=13)
-    axes[2].set_ylabel(r"$1 - F$", fontsize=13)
-    axes[1].set_yscale("log"), axes[2].set_yscale("log")
-    for k, ax in enumerate(axes):
+    colours = ["C0", "C3", "C2", "C1"]
+    route_ls = {"trunc": "-", "flip": "--"}
+    route_lab = {"trunc": "no flip (stoquastic truncation)", "flip": "flip ($H \\to -H$)"}
+    enc_lab = {"pc": "PCE", "fq": "FQE"}
+    fig, axes = plt.subplots(2, 3, figsize=(16, 8.5), sharex=True)
+    letters = iter("abcdef")
+    for i, en in enumerate(ENCODINGS):
+        ax_e, ax_err, ax_f = axes[i]
+        ax_e.plot(R, d["e_fci"], color="k", lw=2, label="FCI")
+        ax_e.plot(R, d["e_doci"], color="0.55", lw=2, label="DOCI")
+        ax_err.axhline(CHEM_ACC, color="0.5", ls=":", lw=2, label="chemical accuracy")
+        ax_err.plot(R, np.abs(d["e_trunc_logical"] - d["e_doci"]), color="k", ls="-.", lw=1.2,
+                    label="truncation alone")
+        for g, col in zip(gammas, colours):
+            for ro in ROUTES:
+                k = f"{ro}_{en}_g{g:g}"
+                if f"{k}_energy" not in d:
+                    continue
+                kw = dict(color=col, ls=route_ls[ro], lw=1.6, marker="o", ms=3.5)
+                ax_e.plot(R, d[f"{k}_energy"], **kw)
+                ax_err.plot(R, np.abs(d[f"{k}_energy"] - d["e_doci"]), **kw)
+                ax_f.plot(R, d[f"{k}_infidelity"], **kw)
+        nq = int(d.get(f"{en}_n_qubits", 0)) if f"{en}_n_qubits" in d else None
+        for ax in axes[i]:
+            ax.set_title(f"({next(letters)})", loc="left", fontweight="bold", fontsize=13)
+            ax.grid(True, alpha=0.3)
+            ax.tick_params(labelsize=11)
+        ax_e.text(0.97, 0.95, enc_lab[en], transform=ax_e.transAxes, ha="right", va="top",
+                  fontsize=14, fontweight="bold")
+        ax_e.set_ylabel("energy [Ha]", fontsize=13)
+        ax_err.set_ylabel(r"$|E_{\rm gadget} - E_{\rm DOCI}|$ [Ha]", fontsize=13)
+        ax_f.set_ylabel(r"$1 - F$", fontsize=13)
+        ax_err.set_yscale("log")
+        ax_f.set_yscale("log")
+    for ax in axes[1]:
         ax.set_xlabel(r"$R$ [$\AA$]", fontsize=13)
-        ax.set_title(f"({'abc'[k]})", loc="left", fontweight="bold")
-        ax.grid(True, alpha=0.3)
-    axes[0].legend(fontsize=8, framealpha=0.9)
-    axes[1].legend(fontsize=7, framealpha=0.9)
+    handles = [Line2D([], [], color=col, lw=1.6, label=rf"$\gamma = {g:g}\,\omega$") for g, col in zip(gammas, colours)]
+    handles += [Line2D([], [], color="k", ls=route_ls[ro], lw=1.6, label=route_lab[ro]) for ro in ROUTES]
+    axes[0, 0].legend(fontsize=9, loc="lower right", framealpha=0.9)
+    axes[0, 1].legend(fontsize=9, loc="lower right", framealpha=0.9)
+    axes[0, 2].legend(handles=handles, fontsize=9, loc="lower right", framealpha=0.9)
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
