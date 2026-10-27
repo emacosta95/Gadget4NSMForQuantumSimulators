@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import re
 
 import matplotlib
 
@@ -47,6 +48,15 @@ METRICS = {
         "rel_energy_error_vs_gamma.pdf",
     ),
 }
+
+
+def pretty(label: str) -> str:
+    """'Ca48' -> r'$^{48}\\mathrm{Ca}$' for legends and annotations."""
+    m = re.match(r"([A-Za-z]+)(\d+)", label)
+    if not m:
+        return label
+    el, a = m.groups()
+    return rf"$^{{{a}}}\mathrm{{{el}}}$"
 
 
 def load(indir: str) -> list[dict]:
@@ -88,7 +98,7 @@ def plot_metric(runs, metric, ylabel, path):
                     y[ok],
                     ms=3.5,
                     lw=1.3,
-                    label=r["label"],
+                    label=pretty(r["label"]),
                     **style(r, runs),
                 )
             ax.set_xscale("log")
@@ -135,7 +145,7 @@ def plot_scatter(runs, path, gamma0):
                 s=36,
                 zorder=3,
             )
-            pts.append((x, y, r["label"], r["encoding"] == "fq"))
+            pts.append((x, y, pretty(r["label"]), r["encoding"] == "fq"))
         if xkey == "dim":
             ax.set_xscale("log")
         ax.set_yscale("log")
