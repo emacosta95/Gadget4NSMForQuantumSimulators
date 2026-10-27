@@ -223,7 +223,7 @@ def gamma_scan(args):
 def dissociation(args):
     Rs = np.linspace(args.R_range[0], args.R_range[1], int(args.R_range[2]))
     out = dict(R=Rs, gammas=np.array(args.diss_gammas), basis=args.basis)
-    keys = [(ro, en) for ro in ROUTES for en in ENCODINGS]
+    keys = [(ro, en) for ro in args.routes for en in ENCODINGS]
     for k in ["e_rhf", "e_doci", "e_fci", "e_trunc_logical"]:
         out[k] = []
     for ro, en in keys:
@@ -253,7 +253,7 @@ def dissociation(args):
     for k, v in out.items():
         if isinstance(v, list):
             out[k] = np.array(v)
-    path = f"{OUTDIR}/dissociation.npz"
+    path = f"{OUTDIR}/dissociation{args.tag}.npz"
     np.savez(path, **out)
     print("->", path)
     return out
@@ -344,6 +344,67 @@ def plot_dissociation(d, path):
     print("->", path)
 
 
+def plot_dissociation_notebook(d, route, path):
+    """The MolecularDOCI.ipynb 6-panel layout for ONE route: rows PCE / FQE,
+    columns energy, |E_G - E_DOCI|, 1 - F (+ DOCI - FCI on a twin axis)."""
+    R, gammas = d["R"], d["gammas"]
+    colors = ["red", "green", "violet", "orange"][: len(gammas)]
+    fig, axs = plt.subplots(2, 3, figsize=(24, 15), constrained_layout=True)
+    for row, en in enumerate(ENCODINGS):
+        ax_a, ax_b, ax_c = axs[row]
+        ax_a.plot(R, d["e_fci"], color="black", lw=3, label="FCI")
+        ax_a.plot(R, d["e_doci"], color="blue", lw=3, label="DOCI")
+        if route == "trunc":
+            ax_a.plot(R, d["e_trunc_logical"], color="blue", lw=2, ls=":", label="DOCI, truncated")
+        ax_b.axhline(CHEM_ACC, color="gray", ls=":", lw=4, label="chemical accuracy")
+        if route == "trunc":
+            ax_b.plot(R, np.abs(d["e_trunc_logical"] - d["e_doci"]), color="black", lw=2, ls="-.",
+                      label="truncation alone")
+        for col, g in zip(colors, gammas):
+            k = f"{route}_{en}_g{g:g}"
+            if f"{k}_energy" not in d:
+                continue
+            E_g, F_g = d[f"{k}_energy"], 1.0 - d[f"{k}_infidelity"]
+            ax_a.plot(R, E_g, ls="--", color=col)
+            ax_a.scatter(R, E_g, color=col)
+            err = np.abs(E_g - d["e_doci"])
+            ax_b.plot(R, err, ls="--", color=col)
+            ax_b.scatter(R, err, color=col)
+            ax_c.plot(R, 1 - F_g, ls="--", color=col)
+            ax_c.scatter(R, 1 - F_g, color=col)
+        lo = float(np.min(d["e_fci"])) - 0.03
+        hi = float(np.max(d["e_doci"][R >= 1.0])) + 0.03
+        ax_a.set_ylim(lo, hi)
+        ax_a.set_xlim(0.4, 4)
+        ax_a.set_ylabel("Energy (Hartree)", fontsize=20)
+        ax_a.legend(fontsize=18, loc="lower right")
+        ax_b.set_yscale("log")
+        ax_b.set_xlim(1, 4)
+        ax_b.set_ylabel(r"$|E_{G}(R,\gamma) - E_{\mathrm{DOCI}}(R)|$ ", fontsize=20)
+        ax_b.legend(fontsize=18, loc="lower right")
+        ax_c.set_yscale("log")
+        ax_c.set_xlim(0.5, 4)
+        ax_c.set_ylabel(r"$1-F(R,\gamma)$", fontsize=20)
+        ax_twin = ax_c.twinx()
+        ax_twin.plot(R, np.abs(d["e_doci"] - d["e_fci"]), color="black", ls="-", lw=3)
+        ax_twin.set_yscale("log")
+        ax_twin.set_ylabel(r"$E_{\mathrm{DOCI}}(R) - E_{\mathrm{FCI}}(R)$ ", fontsize=20)
+        ax_twin.tick_params(labelsize=15, which="both")
+        for ax, letter in zip(axs[row], "abc"):
+            ax.tick_params(labelsize=15, which="both")
+            if row == 1:
+                ax.set_xlabel("R (Angstrom)", fontsize=20)
+            ax.text(0.03, 0.97, f"({letter}{row + 1})", transform=ax.transAxes, fontsize=24,
+                    fontweight="bold", va="top", ha="left", zorder=10,
+                    bbox=dict(facecolor="white", edgecolor="none", pad=2))
+    handles = [plt.Line2D([], [], color=c, ls="--", marker="o", ms=8) for c in colors]
+    labels = [rf"$\gamma={g:g}\,\omega$" for g in gammas]
+    fig.legend(handles, labels, loc="outside upper center", ncol=len(gammas), fontsize=20, frameon=False)
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    print("->", path)
+
+
 # ------------------------------------------------------------------- main
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -356,6 +417,12 @@ def main():
     ap.add_argument("--dissociation", action="store_true")
     ap.add_argument("--R-range", nargs=3, type=float, default=[0.8, 3.5, 12], metavar=("MIN", "MAX", "NUM"))
     ap.add_argument("--diss-gammas", nargs="+", type=float, default=[20.0, 200.0])
+    ap.add_argument("--routes", nargs="+", default=ROUTES, choices=ROUTES,
+                    help="routes included in the dissociation scan")
+    ap.add_argument("--style", default="paper", choices=["paper", "notebook"],
+                    help="dissociation figure: compact 2x3 with both routes (paper) or the "
+                         "MolecularDOCI.ipynb 6-panel layout, one route per figure (notebook)")
+    ap.add_argument("--tag", default="", help="suffix of the dissociation data / figure files")
     ap.add_argument("--plot-only", action="store_true")
     args = ap.parse_args()
     warnings.filterwarnings("ignore")
@@ -368,9 +435,15 @@ def main():
         d = gamma_scan(args)
     plot_gamma_scan(d, f"{FIGDIR}/lih_routes_gamma_scan_R{args.R:g}.pdf")
 
-    if args.dissociation or (args.plot_only and os.path.exists(f"{OUTDIR}/dissociation.npz")):
-        d = dict(np.load(f"{OUTDIR}/dissociation.npz")) if args.plot_only else dissociation(args)
-        plot_dissociation(d, f"{FIGDIR}/lih_routes_dissociation.pdf")
+    dpath = f"{OUTDIR}/dissociation{args.tag}.npz"
+    if args.dissociation or (args.plot_only and os.path.exists(dpath)):
+        d = dict(np.load(dpath)) if args.plot_only else dissociation(args)
+        if args.style == "paper":
+            plot_dissociation(d, f"{FIGDIR}/lih_routes_dissociation{args.tag}.pdf")
+        else:
+            for ro in ROUTES:
+                if any(k.startswith(f"{ro}_") for k in d):
+                    plot_dissociation_notebook(d, ro, f"{FIGDIR}/lih_{ro}_6panel{args.tag}.pdf")
 
 
 if __name__ == "__main__":
