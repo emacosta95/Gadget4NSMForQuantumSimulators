@@ -96,23 +96,23 @@ def plot_grid(results, path, n_show=5, legend_title=None):
             draw_levels(ax, r, n_show=n_show)
             has_fermionic |= bool((r.sector == "A").any())
             ax.set_title(
-                f"({next(letters)})", loc="left", fontweight="bold", fontsize=15
+                f"({next(letters)})", loc="left", fontweight="bold", fontsize=13
             )
             ax.text(
                 0.03,
                 0.04,
                 rf"{PRETTY.get(nuc, nuc)}, {ENC_LABEL[enc]}, $F={r.fidelity_gadget:.3f}$",
                 transform=ax.transAxes,
-                fontsize=14,
+                fontsize=15,
                 va="bottom",
                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="0.7", alpha=0.9),
             )
             ax.grid(alpha=0.25)
-            ax.tick_params(labelsize=14)
+            ax.tick_params(labelsize=11)
             if i == 1:
-                ax.set_xlabel(r"$t\,\omega$", fontsize=16)
+                ax.set_xlabel(r"$t\,\omega$", fontsize=20)
             if j == 0:
-                ax.set_ylabel(r"$e_i\,\gamma/\omega [\omega]$", fontsize=16)
+                ax.set_ylabel(r"$e_i\,\gamma/\omega [\omega]$", fontsize=20)
     handles = [
         Line2D([], [], color="#c1121f", lw=2.2, label="levels"),
         Line2D([], [], color="k", ls="--", lw=1.3, label=r"$e(t)=\langle H(t)\rangle$"),
@@ -132,7 +132,7 @@ def plot_grid(results, path, n_show=5, legend_title=None):
         handles[0].set_label("bosonic levels")
     axes[0, 0].legend(
         handles=handles,
-        fontsize=13,
+        fontsize=15,
         loc="upper right",
         framealpha=0.9,
         title=legend_title,
@@ -143,9 +143,8 @@ def plot_grid(results, path, n_show=5, legend_title=None):
     )
     cax = fig.add_axes([0.945, 0.08, 0.012, 0.87])
     cb = fig.colorbar(plt.cm.ScalarMappable(norm=POP_NORM, cmap=POP_CMAP), cax=cax)
-    cb.set_label(r"population $|\langle\phi_i(t)|\psi(t)\rangle|^2$", fontsize=14)
-    cb.ax.tick_params(labelsize=13)
-    fig.savefig(path + ".pdf")
+    cb.set_label(r"population $|\langle\phi_i(t)|\psi(t)\rangle|^2$", fontsize=20)
+    fig.savefig(path + ".pdf", bbox_inches="tight", dpi=200)
     fig.savefig(path + ".png", dpi=200)
     plt.close(fig)
     print("->", path + ".pdf")
