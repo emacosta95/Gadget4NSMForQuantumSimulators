@@ -155,8 +155,20 @@ def plot_scatter(runs, path, gamma0):
         # C(10, 4) = C(10, 6); in (b) every Ca isotope sits at N_G = 10)
         fig.canvas.draw()
         renderer = fig.canvas.get_renderer()
-        offsets = [(5, 4), (5, -13), (-5, 4), (-5, -13), (5, 15), (-5, 15),
-                   (5, -26), (-5, -26), (5, 28), (-5, 28), (14, 4), (-14, 4)]
+        offsets = [
+            (5, 4),
+            (5, -13),
+            (-5, 4),
+            (-5, -13),
+            (5, 15),
+            (-5, 15),
+            (5, -26),
+            (-5, -26),
+            (5, 28),
+            (-5, 28),
+            (14, 4),
+            (-14, 4),
+        ]
         boxes = []
         inside = ax.get_window_extent(renderer).expanded(1.02, 1.02)
         for x, y, label, bold in sorted(pts, key=lambda t: (t[0], t[1])):
@@ -171,8 +183,10 @@ def plot_scatter(runs, path, gamma0):
                     fontweight="bold" if bold else "normal",
                 )
                 bb = ann.get_window_extent(renderer).expanded(1.05, 1.15)
-                if inside.contains(bb.x0, bb.y0) and inside.contains(bb.x1, bb.y1) and not any(
-                    bb.overlaps(b) for b in boxes
+                if (
+                    inside.contains(bb.x0, bb.y0)
+                    and inside.contains(bb.x1, bb.y1)
+                    and not any(bb.overlaps(b) for b in boxes)
                 ):
                     boxes.append(bb)
                     break
