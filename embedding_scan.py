@@ -73,7 +73,14 @@ def scan(label, gammas, ratios, max_flips, outdir, use_c=False):
     inf_emb = np.full((len(gammas), len(ratios)), np.nan)
     dE_emb = np.full_like(inf_emb, np.nan)
     path = os.path.join(outdir, f"scan_embedding_{label}.npz")
+    if os.path.exists(path):  # resume: keep the rows already computed on the same grid
+        old = np.load(path, allow_pickle=True)
+        if np.allclose(old["gammas"], gammas) and np.allclose(old["ratios"], ratios):
+            inf_emb, dE_emb = old["inf_emb"].copy(), old["dE_emb"].copy()
+            print(f"[{label}] resuming: {int((~np.isnan(inf_emb).any(1)).sum())} rows already done", flush=True)
     for i, g in enumerate(gammas):
+        if not np.isnan(inf_emb[i]).any():
+            continue
         t0 = time.time()
         for j, ratio in enumerate(ratios):
             H = GadgetHamiltonian(
