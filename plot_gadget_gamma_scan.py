@@ -37,7 +37,7 @@ SHELLS = ["sd", "pf"]  # rows: oxygen, calcium
 MARKERS = "osD^v<>ph*"
 LABEL_FONTSIZE = 9  # nucleus labels in the scatter plot
 METRICS = {
-    "infidelity": (r"$1 - F$", "infidelity_vs_gamma.pdf"),
+    "infidelity": (r"$1 - F(\gamma)$", "infidelity_vs_gamma.pdf"),
     "infidelity_code_space": (
         r"$1 - F$ (code space)",
         "infidelity_code_space_vs_gamma.pdf",
@@ -107,12 +107,12 @@ def plot_metric(runs, metric, ylabel, path):
             ax.set_title(f"({next(letters)})", loc="left", fontweight="bold")
             if ax.lines:
                 ax.legend(
-                    fontsize=7, ncol=2 if len(ax.lines) > 5 else 1, framealpha=0.85
+                    fontsize=10, ncol=2 if len(ax.lines) > 5 else 1, framealpha=0.85
                 )
     for ax in axes[1]:
-        ax.set_xlabel(r"$\gamma$")
+        ax.set_xlabel(r"$\gamma$", fontsize=20)
     for ax in axes[:, 0]:
-        ax.set_ylabel(ylabel)
+        ax.set_ylabel(ylabel, fontsize=20)
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
@@ -194,9 +194,9 @@ def plot_scatter(runs, path, gamma0):
             else:  # every slot taken: keep the last attempt
                 boxes.append(bb)
                 ax.add_artist(ann)
-        ax.set_xlabel(xlabel, fontsize=15)
+        ax.set_xlabel(xlabel, fontsize=20)
         ax.grid(True, which="both", alpha=0.3)
-    axes[0].set_ylabel(rf"$1 - F$  ($\gamma = {gamma0:g} \omega$)", fontsize=15)
+    axes[0].set_ylabel(rf"$1 - F$  ($\gamma = {gamma0:g} \omega$)", fontsize=20)
     axes[0].set_title("(a)", loc="left", fontweight="bold")
     axes[1].set_title("(b)", loc="left", fontweight="bold")
     handles = [
@@ -206,7 +206,7 @@ def plot_scatter(runs, path, gamma0):
         plt.Line2D([], [], color="k", marker=m, ls="", label=lab)
         for m, lab in shell_marker.values()
     ]
-    axes[1].legend(handles=handles, fontsize=15, framealpha=0.85)
+    axes[1].legend(handles=handles, fontsize=10, framealpha=0.85)
     fig.tight_layout()
     fig.savefig(path)
     plt.close(fig)
