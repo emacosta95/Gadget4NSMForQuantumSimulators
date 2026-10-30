@@ -259,14 +259,16 @@ def plot_maps(path):
     for k, (ax, (title, g, chi, inf)) in enumerate(zip(axes, panels)):
         ge, ce = log_edges(g), log_edges(chi)
         mesh = ax.pcolormesh(ge, ce, np.clip(inf, vmin, 1).T, norm=norm, cmap="viridis", shading="flat")
-        for jf in [1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7]:  # J_F = const
-            ax.plot(ge, jf / ge, ls="--", lw=0.8, color="w", alpha=0.45)
+        for R, ls in [(1e2, "--"), (1e3, ":")]:  # R = chi gamma^2 = const
+            ax.plot(ge, R / ge**2, ls=ls, lw=1.6, color="w", label=rf"$\chi\gamma^2=10^{{{int(np.log10(R))}}}$")
         ax.set(xscale="log", yscale="log", xlim=(ge[0], ge[-1]), ylim=(ce[0], ce[-1]))
         ax.set_title(rf"$^{{18}}$O, {title}", fontsize=18)
         ax.set_title(f"({'ab'[k]})", loc="left", fontweight="bold", fontsize=15)
         ax.set_xlabel(r"$\gamma$", fontsize=18)
         ax.tick_params(labelsize=13, which="both", direction="in", top=True, right=True, color="w")
+        ax.grid(False)
     axes[0].set_ylabel(r"$\chi = J_F/\gamma$", fontsize=18)
+    axes[0].legend(fontsize=12, loc="upper right", framealpha=0.6)
     cb = fig.colorbar(mesh, ax=axes, pad=0.02, aspect=20)
     cb.set_label(r"$1-F(\chi,\gamma)$", fontsize=18)
     cb.ax.tick_params(labelsize=13)
