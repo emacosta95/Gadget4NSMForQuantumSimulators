@@ -215,7 +215,11 @@ def plot_graph(path):
         p2l = e.phys_to_logical()
         Gp.add_edges_from(e.intra_edges, kind="chain")
         Gp.add_edges_from(e.couplers().values(), kind="coupler")
-        pp = nx.spring_layout(Gp, seed=3, k=0.9)
+        # chain bonds short (heavy), couplers long: chains stay compact
+        Hw = nx.Graph()
+        Hw.add_nodes_from(Gp)
+        Hw.add_edges_from(((u, v, {"w": 0.35 if Gp.edges[u, v]["kind"] == "chain" else 1.0}) for u, v in Gp.edges()))
+        pp = nx.kamada_kawai_layout(Hw, weight="w")
         ce = [x for x in Gp.edges() if Gp.edges[x]["kind"] == "chain"]
         ke = [x for x in Gp.edges() if Gp.edges[x]["kind"] == "coupler"]
         nx.draw_networkx_edges(Gp, pp, edgelist=ke, ax=ax, style="--", alpha=0.4)
@@ -224,19 +228,19 @@ def plot_graph(path):
         nx.draw_networkx_nodes(Gp, pp, ax=ax, node_color=[p2l[q] for q in Gp], cmap="tab10",
                                vmin=0, vmax=9, node_size=420)
         nx.draw_networkx_labels(Gp, pp, ax=ax, labels={q: p2l[q] for q in Gp}, font_size=10)
-        ax.text(0.02, 0.02, label, transform=ax.transAxes, fontsize=12,
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="0.7"))
+        ax.set_title(label, fontsize=12)
+        ax.margins(0.12)
         ax.axis("off")
 
     # (b) local field: minorminer K6 embedding, local drives
-    draw_physical(axes[1], loc, f"local field: {sum(loc.chain_lengths().values())} qubits,\n"
-                                r"drive $d_a/k_a$ on each chain qubit")
-    axes[1].set_title("(b)", loc="left", fontweight="bold", fontsize=15)
+    draw_physical(axes[1], loc, f"local field: {sum(loc.chain_lengths().values())} qubits, "
+                                r"drive $d_a/k_a$ per chain qubit")
+    axes[1].text(0.0, 1.02, "(b)", transform=axes[1].transAxes, fontweight="bold", fontsize=15)
     # (c) global field: padded chains, bond width ~ r_a
     r = 1 / m.t_target
-    draw_physical(axes[2], emb, f"global field: {emb.n_physical} qubits, " r"$\Omega=\sqrt{J_F}$," "\n"
-                                r"chain bond $J_{F,a}=J_F\,r_a$ (width $\propto r_a$)", chain_w=r / r.max())
-    axes[2].set_title("(c)", loc="left", fontweight="bold", fontsize=15)
+    draw_physical(axes[2], emb, f"global field: {emb.n_physical} qubits, " r"$\Omega=\sqrt{J_F}$, "
+                                r"$J_{F,a}=J_F\,r_a$", chain_w=r / r.max())
+    axes[2].text(0.0, 1.02, "(c)", transform=axes[2].transAxes, fontweight="bold", fontsize=15)
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
@@ -283,6 +287,7 @@ def main():
     if not args.plot_only:
         scan(args.n_gamma, args.n_chi, args.chi_max)
         if not os.path.exists(LOCAL):  # local field on the same grid
+            os.makedirs("data/systematic_analysis/_tmp_local", exist_ok=True)
             subprocess.run([sys.executable, "-W", "ignore", "-c",
                             "import numpy as np, embedding_scan as e;"
                             f"g=np.logspace(0,np.log10(400),{args.n_gamma}); r=np.logspace(0,np.log10({args.chi_max}),{args.n_chi});"
