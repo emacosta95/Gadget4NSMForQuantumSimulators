@@ -257,14 +257,14 @@ def plot_maps(path):
     norm = LogNorm(vmin=vmin, vmax=1.0)
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.6), sharey=True, constrained_layout=True)
     for k, (ax, (title, g, chi, inf)) in enumerate(zip(axes, panels)):
-        ge, ce = log_edges(g / dmax), log_edges(chi)
+        ge, ce = log_edges(g), log_edges(chi)
         mesh = ax.pcolormesh(ge, ce, np.clip(inf, vmin, 1).T, norm=norm, cmap="viridis", shading="flat")
-        for jf in [1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7]:  # J_F / |d|_max = const
+        for jf in [1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7]:  # J_F = const
             ax.plot(ge, jf / ge, ls="--", lw=0.8, color="w", alpha=0.45)
         ax.set(xscale="log", yscale="log", xlim=(ge[0], ge[-1]), ylim=(ce[0], ce[-1]))
         ax.set_title(rf"$^{{18}}$O, {title}", fontsize=18)
         ax.set_title(f"({'ab'[k]})", loc="left", fontweight="bold", fontsize=15)
-        ax.set_xlabel(r"$\gamma / |d|_{\max}$", fontsize=18)
+        ax.set_xlabel(r"$\gamma$", fontsize=18)
         ax.tick_params(labelsize=13, which="both", direction="in", top=True, right=True, color="w")
     axes[0].set_ylabel(r"$\chi = J_F/\gamma$", fontsize=18)
     cb = fig.colorbar(mesh, ax=axes, pad=0.02, aspect=20)
