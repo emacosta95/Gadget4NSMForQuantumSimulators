@@ -258,7 +258,8 @@ def plot_maps(path):
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.6), sharey=True, constrained_layout=True)
     for k, (ax, (title, g, chi, inf)) in enumerate(zip(axes, panels)):
         ge, ce = log_edges(g), log_edges(chi)
-        mesh = ax.pcolormesh(ge, ce, np.clip(inf, vmin, 1).T, norm=norm, cmap="viridis", shading="flat")
+        mesh = ax.pcolormesh(ge, ce, np.clip(inf, vmin, 1).T, norm=norm, cmap="viridis", shading="flat",
+                             edgecolors="face", linewidth=0, rasterized=True)
         for R, ls in [(1e2, "--"), (1e3, ":")]:  # R = chi gamma^2 = const
             ax.plot(ge, R / ge**2, ls=ls, lw=1.6, color="w", label=rf"$\chi\gamma^2=10^{{{int(np.log10(R))}}}$")
         ax.set(xscale="log", yscale="log", xlim=(ge[0], ge[-1]), ylim=(ce[0], ce[-1]))
