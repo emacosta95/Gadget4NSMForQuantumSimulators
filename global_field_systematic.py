@@ -8,8 +8,11 @@ Scheme (as in global_field_scan.py, here for any nucleus):
     chain padded by a free neighbour: all chains have k = 2
     (sd: 12 qubits, pf: 20 qubits);
   * ONE global field  Omega = sqrt(J_F)  on every qubit;
-  * chain bond  J_F,a = J_F r_a,  r_a = (1 - t_a^2 / J_F) / t_a,  t_a = |d_a|/sqrt 2,
-    so the chain doublet is split by exactly 2 t_a (exact k = 2 inversion);
+  * chain bond  J_F,a = J_F r_a,  t_a = |d_a|/sqrt 2, with (--r-mode)
+      exact: r_a = (1 - t_a^2 / J_F) / t_a, the chain doublet is split by
+             exactly 2 t_a (exact k = 2 inversion, default);
+      pert:  r_a = 1 / t_a, leading order t = Omega^2 / J (relative drive
+             error ~ t_a^2 / J_F);
   * drive signs through the gauge sigma_a = sign(d_a) (-1)^(k_a - 1): a code
     state |n> picks up prod_a sigma_a^{n_a};
   * ground state within --max-flips (default 5) bit flips of the code space (library
@@ -18,9 +21,11 @@ Scheme (as in global_field_scan.py, here for any nucleus):
 Usage
 -----
   python global_field_systematic.py                      # O18 O20 O22, 20 x 20 grid
+  python global_field_systematic.py --r-mode pert        # perturbative r_a
 
-Output: data/systematic_analysis/global_field_scan_<label>.npz
-        (gammas, ratios, inf_emb, dE_emb, chains, r_inf, d, max_flips)
+Output: data/systematic_analysis/global_field_scan_<label>.npz  (exact)
+        data/systematic_analysis/global_field_scan_pert_<label>.npz  (pert)
+        (gammas, ratios, inf_emb, dE_emb, chains, r_inf, d, max_flips, r_mode)
 """
 
 from __future__ import annotations
@@ -96,8 +101,10 @@ class GlobalFieldHamiltonian(GadgetHamiltonian):
 
 
 class GlobalFieldModel:
-    def __init__(self, label, max_flips=5):
-        self.label = label
+    def __init__(self, label, max_flips=5, r_mode="exact"):
+        if r_mode not in ("exact", "pert"):
+            raise ValueError(f"unknown r_mode {r_mode!r}")
+        self.label, self.r_mode = label, r_mode
         self.p = problem(label)
         self.E_exact, self.psi_exact = self.p.exact_groundstate()
         self.drive = fit_drive(self.p.g1, n_restarts=30, use_c=False, seed=42)
@@ -113,7 +120,7 @@ class GlobalFieldModel:
 
     def point(self, gamma, J_F):
         Omega = np.sqrt(J_F)
-        r = (1.0 - self.t**2 / J_F) / self.t
+        r = (1.0 - self.t**2 / J_F) / self.t if self.r_mode == "exact" else 1.0 / self.t
         J_chain = J_F * r
         H = GlobalFieldHamiltonian(
             self.p, self.enc, self.drive,
@@ -129,13 +136,14 @@ class GlobalFieldModel:
                     dim=H.truncated_dim)
 
 
-def scan(label, gammas, ratios, max_flips, outdir):
-    m = GlobalFieldModel(label, max_flips)
-    print(f"[{label}] global field: {m.emb.n_physical} physical qubits, "
+def scan(label, gammas, ratios, max_flips, outdir, r_mode="exact"):
+    m = GlobalFieldModel(label, max_flips, r_mode)
+    print(f"[{label}] global field ({r_mode} r_a): {m.emb.n_physical} physical qubits, "
           f"r_a(J_F->inf) = {np.round(1 / m.t, 3)}", flush=True)
     inf = np.full((len(gammas), len(ratios)), np.nan)
     dE = np.full_like(inf, np.nan)
-    path = os.path.join(outdir, f"global_field_scan_{label}.npz")
+    tag = "" if r_mode == "exact" else f"{r_mode}_"
+    path = os.path.join(outdir, f"global_field_scan_{tag}{label}.npz")
     if os.path.exists(path):  # resume on the same grid
         old = np.load(path, allow_pickle=True)
         if np.allclose(old["gammas"], gammas) and np.allclose(old["ratios"], ratios):
@@ -148,7 +156,7 @@ def scan(label, gammas, ratios, max_flips, outdir):
             r = m.point(g, chi * g)
             inf[i, j], dE[i, j] = r["infidelity"], r["rel_energy_error"]
         np.savez(path, gammas=gammas, ratios=ratios, inf_emb=inf, dE_emb=dE,
-                 chains=m.emb.chain_lengths(), r_inf=1 / m.t, d=m.d, max_flips=max_flips)
+                 chains=m.emb.chain_lengths(), r_inf=1 / m.t, d=m.d, max_flips=max_flips, r_mode=r_mode)
         print(f"[{label}] gamma={g:7.2f}  best 1-F={np.nanmin(inf[i]):.2e}  "
               f"[dim {r['dim']}, {time.time()-t0:.0f}s]", flush=True)
     print("->", path, flush=True)
@@ -162,6 +170,7 @@ def main():
     ap.add_argument("--gamma-max", type=float, default=400.0)
     ap.add_argument("--ratio-max", type=float, default=1000.0)
     ap.add_argument("--max-flips", type=int, default=5)
+    ap.add_argument("--r-mode", choices=["exact", "pert"], default="exact")
     ap.add_argument("--outdir", default="data/systematic_analysis")
     args = ap.parse_args()
     warnings.filterwarnings("ignore")
@@ -170,7 +179,7 @@ def main():
         n_def = 20 if NUCLEI[label][0] == "sd" else 12  # grids of the local-field maps
         gammas = np.logspace(0, np.log10(args.gamma_max), args.n_gamma or n_def)
         ratios = np.logspace(0, np.log10(args.ratio_max), args.n_ratio or n_def)
-        scan(label, gammas, ratios, args.max_flips, args.outdir)
+        scan(label, gammas, ratios, args.max_flips, args.outdir, args.r_mode)
 
 
 if __name__ == "__main__":
