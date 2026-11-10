@@ -12,8 +12,8 @@ The gauge is a change of orbital phases (same spectrum), so (a) is the exact
 hopping in the basis the gadget sees. Same convention as plot_lih_couplings.py:
 g1 = K/2 = 1/2 (ab|ab) in mHa [src/molecular_doci.py stores K, and the fit there
 gives -d d^T ~ K; here d is rescaled by 1/sqrt 2 so that -d_A d_B ~ K/2].
-Canonical RHF orbitals 0, 1, ... by increasing energy; tick labels carry the
-gauge sign s_A. One colour scale for both panels.
+Canonical RHF orbitals 0, 1, ... by increasing energy (gauge signs s_A printed,
+not shown). One colour scale for both panels.
 
 Usage:
     python plot_lih_noflip_couplings.py [--basis sto-6g] [--R 1.5949] [--width 7.0]
@@ -68,7 +68,7 @@ for M in (g_exact, g_gadget):
     np.fill_diagonal(M, np.nan)
 
 n_occ = int(np.sum(c["mf"].mo_occ > 0)) - c["n_core"]
-labels = [rf"${a}^{{{'+' if s[a] > 0 else '-'}}}$" for a in range(n)]
+labels = [str(a) for a in range(n)]  # pair orbitals (canonical RHF, by energy)
 print(f"LiH {args.basis}, R={args.R} A: {n} orbitals, gauge s = {s}")
 print(f"dropped {int(dropped[iu].sum())} of {len(iu[0])} edges, "
       f"frustration (dropped |g| weight) = {frustration:.3f}")
